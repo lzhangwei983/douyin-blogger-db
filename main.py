@@ -16,6 +16,10 @@ def icon_path():
     return str(Path(__file__).resolve().parent / "icon.ico")
 
 def main():
+    print("=" * 52)
+    print(" 抖音博主数据库 - 仅供个人学习 / 技术研究 / 个人备份")
+    print(" 使用即表示遵守各平台服务条款与当地法律，风险自负。")
+    print("=" * 52)
     if sys.stdout is None:
         sys.stdout = open(os.devnull, "w", encoding="utf-8")
     if sys.stderr is None:
