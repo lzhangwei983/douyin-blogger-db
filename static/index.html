@@ -1,0 +1,1775 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>抖音博主数据库</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b0e11'/%3E%3Crect x='1' y='1' width='30' height='30' rx='6' fill='none' stroke='%2337b6e6' stroke-opacity='0.35'/%3E%3Cpath d='M9 20c1.5 0 1.5-2 3-2s1.5 2 3 2 1.5-2 3-2 1.5 2 3 2' fill='none' stroke='%2337b6e6' stroke-width='1.6' stroke-linecap='round'/%3E%3Cpath d='M12 14l1.6-3 1.6 2.4L17.6 10l1.6 3.2' fill='none' stroke='%2337b6e6' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<style>
+/* ============================================================
+   抖音博主数据库 — design tokens & base styles
+   "Restrained, precise, minimal observability terminal"
+   与 OpenCode Token Observatory 同一设计语言
+   ============================================================ */
+:root {
+  --radius-card: 6px;
+  --radius-control: 6px;
+  --radius-pill: 999px;
+  --font-sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+  --font-mono: "Cascadia Code", "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono",
+    monospace;
+  --t-fast: 120ms;
+  --t-base: 180ms;
+  --t-slow: 240ms;
+  --duration-fast: var(--t-fast);
+  --duration-base: var(--t-base);
+  --duration-slow: var(--t-slow);
+  --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --z-tooltip: 60;
+  --z-menu: 50;
+  --z-topbar: 40;
+  --z-overlay: 70;
+}
+
+:root[data-mode="dark"] {
+  --bg: #0b0e11;
+  --bg-elevated: #10151a;
+  --panel: #12171d;
+  --panel-hover: #161c23;
+  --border: #232b34;
+  --border-strong: #2f3a46;
+  --text: #e4eaf1;
+  --text-secondary: #93a1af;
+  --text-muted: #5c6a78;
+  --text-faint: #46525f;
+  --accent: #37b6e6;
+  --accent-strong: #5ecbf2;
+  --accent-soft: rgba(55, 182, 230, 0.12);
+  --accent-border: rgba(55, 182, 230, 0.35);
+  --amber: #e0af68;
+  --amber-soft: rgba(224, 175, 104, 0.12);
+  --amber-border: rgba(224, 175, 104, 0.35);
+  --danger: #f7768e;
+  --danger-soft: rgba(247, 118, 142, 0.12);
+  --ok: #9ece6a;
+  --ok-soft: rgba(158, 206, 106, 0.12);
+  --shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --tooltip-bg: #1a2129;
+  --tooltip-border: #2f3a46;
+  --grid-dot: rgba(140, 165, 190, 0.07);
+  color-scheme: dark;
+}
+
+:root[data-mode="light"] {
+  --bg: #f2f4f7;
+  --bg-elevated: #ffffff;
+  --panel: #ffffff;
+  --panel-hover: #f6f8fa;
+  --border: #d9e0e8;
+  --border-strong: #c3ccd6;
+  --text: #161d26;
+  --text-secondary: #4d5a69;
+  --text-muted: #7a8694;
+  --text-faint: #9aa5b1;
+  --accent: #0b8fb8;
+  --accent-strong: #087aa0;
+  --accent-soft: rgba(11, 143, 184, 0.09);
+  --accent-border: rgba(11, 143, 184, 0.4);
+  --amber: #a86a10;
+  --amber-soft: rgba(168, 106, 16, 0.1);
+  --amber-border: rgba(168, 106, 16, 0.4);
+  --danger: #c43d5a;
+  --danger-soft: rgba(196, 61, 90, 0.08);
+  --ok: #4c8f2b;
+  --ok-soft: rgba(76, 143, 43, 0.1);
+  --shadow-panel: 0 1px 2px rgba(20, 30, 45, 0.06);
+  --tooltip-bg: #ffffff;
+  --tooltip-border: #c3ccd6;
+  --grid-dot: rgba(80, 105, 130, 0.14);
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at 1px 1px, var(--grid-dot) 1px, transparent 0) 0 0 / 22px 22px,
+    var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+::selection { background: var(--accent-soft); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 5px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-track { background: transparent; }
+a { color: var(--accent-strong); text-decoration: none; }
+a:hover { text-decoration: underline; }
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.daily-topic-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; margin-top: 8px; }
+.daily-topic { padding: 14px 16px; }
+.daily-topic-head { font-weight: 600; font-size: 14px; margin-bottom: 10px; color: var(--accent); }
+.daily-item { position: relative; padding: 8px 0; border-top: 1px solid var(--border); }
+.daily-item:first-of-type { border-top: none; }
+.daily-item a { color: var(--text); text-decoration: none; font-size: 13px; line-height: 1.45; display: block; }
+.daily-item a:hover { color: var(--accent); }
+.daily-meta { color: var(--text-muted); font-size: 11px; margin-top: 3px; padding-right: 64px; }
+.daily-summary { color: var(--text-secondary); font-size: 12px; line-height: 1.55; margin-top: 5px; background: var(--panel-hover); border-radius: 8px; padding: 6px 10px; }
+.daily-summary.dim { color: var(--text-muted); }
+.daily-date-card { padding: 14px 18px; margin-top: 12px; transition: border-color .15s, transform .15s; }
+.daily-date-card:hover { border-color: var(--accent); transform: translateX(2px); }
+.daily-date-big { font-size: 18px; font-weight: 700; font-family: var(--font-mono); color: var(--accent); min-width: 110px; }
+.progress-bar { height: 10px; background: var(--panel-hover); border-radius: 6px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #22c55e); border-radius: 6px; transition: width .6s ease; }
+.pill { font-size: 11px; padding: 3px 10px; border-radius: 20px; font-weight: 600; }
+.pill-ok { background: rgba(34,197,94,.15); color: #22c55e; }
+.pill-muted { background: var(--panel-hover); color: var(--text-muted); }
+.dv-tag { display: inline-block; font-size: 11px; font-weight: 600; color: var(--accent); background: rgba(59,130,246,.12); border-radius: 6px; padding: 3px 10px; }
+.dv-title { font-size: 20px; font-weight: 700; line-height: 1.4; margin: 10px 0 0; color: var(--text); }
+.dv-summary-box { margin-top: 16px; border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: var(--panel-hover); }
+.dv-summary-label { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-muted); margin-bottom: 8px; }
+.dv-summary { font-size: 14px; line-height: 1.75; color: var(--text); }
+.daily-copy { position: absolute; right: 0; top: 8px; font-size: 11px; color: var(--text-muted); cursor: pointer; background: var(--panel-hover); border-radius: 6px; padding: 2px 8px; }
+.daily-copy:hover { color: var(--accent); }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* ============================================================
+   Top bar
+   ============================================================ */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-topbar);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.topbar-inner {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  gap: 10px 20px;
+  flex-wrap: wrap;
+}
+.brand { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.brand-mark {
+  width: 26px; height: 26px;
+  border-radius: var(--radius-control);
+  display: grid; place-items: center;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  flex: none;
+}
+.brand-title { font-size: 14px; font-weight: 600; letter-spacing: 0.01em; white-space: nowrap; }
+.brand-sub { font-size: 11.5px; color: var(--text-muted); font-family: var(--font-mono); white-space: nowrap; }
+.topbar-spacer { flex: 1; }
+.topbar-actions { display: flex; align-items: center; gap: 10px; }
+.topbar-divider { width: 1px; height: 20px; background: var(--border-strong); margin: 0 6px; flex: none; }
+.topbar-actions select.ctl { min-width: 64px; }
+
+/* status pill */
+.status-pill {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); flex: none; }
+.status-dot.ok { background: var(--ok); }
+.status-dot.warn { background: var(--amber); }
+.status-dot.err { background: var(--danger); }
+.status-dot.busy { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+.status-label { font-weight: 500; }
+.last-updated {
+  font-size: 12px; color: var(--text-muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+/* ============================================================
+   Controls & buttons
+   ============================================================ */
+.ctl {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 32px; padding: 0 12px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text-secondary);
+  font: inherit; font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--duration-fast) ease, border-color var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+.ctl:hover { background: var(--panel-hover); border-color: var(--border-strong); color: var(--text); }
+.ctl:focus-visible, .btn:focus-visible, .seg:focus-visible,
+select:focus-visible, input:focus-visible, textarea:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 1px;
+}
+.ctl.on { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-strong); }
+.ctl:disabled { opacity: 0.45; cursor: not-allowed; }
+.ctl-icon { width: 15px; height: 15px; flex: none; }
+select.ctl {
+  appearance: none;
+  padding-right: 26px;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 14px) 12px, calc(100% - 10px) 12px;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+}
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  height: 32px; min-width: 32px; padding: 0 14px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text-secondary);
+  font: inherit; font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--duration-fast) ease, border-color var(--duration-fast) ease, color var(--duration-fast) ease;
+}
+.btn:hover { background: var(--panel-hover); color: var(--text); }
+.btn.primary { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent-strong); }
+.btn.primary:hover { background: var(--accent); border-color: var(--accent); color: #0b0e11; }
+.btn.danger { color: var(--danger); }
+.btn.danger:hover { background: var(--danger-soft); border-color: var(--danger); }
+.btn.spin .ctl-icon { animation: spin 0.9s linear infinite; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn.mini { height: 24px; min-width: 24px; padding: 0 6px; font-size: 12px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* segmented control */
+.seg-group {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  overflow: hidden;
+  background: var(--panel);
+}
+.seg {
+  height: 30px; padding: 0 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit; font-size: 12.5px;
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+  transition: background var(--duration-fast) ease, color var(--duration-fast) ease;
+  white-space: nowrap;
+}
+.seg:last-child { border-right: none; }
+.seg:hover { color: var(--text); background: var(--panel-hover); }
+.seg.active { background: var(--accent-soft); color: var(--accent-strong); }
+
+/* search input */
+.search-input {
+  height: 30px; padding: 0 10px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit; font-size: 12.5px;
+  min-width: 180px;
+  transition: border-color var(--duration-fast) ease;
+}
+.search-input::placeholder { color: var(--text-faint); }
+.search-input:focus { border-color: var(--accent-border); outline: none; }
+
+/* ============================================================
+   Layout & panels
+   ============================================================ */
+.app-main {
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 16px 24px 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-panel);
+}
+.section-title {
+  font-size: 12px; font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  display: flex; align-items: center; gap: 8px;
+  margin: 0;
+}
+.crumbs { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-muted); }
+.crumbs a { color: var(--text-secondary); }
+.crumbs a:hover { color: var(--accent-strong); }
+
+/* ============================================================
+   Metric cards (fixed height, gradient top line)
+   ============================================================ */
+.metrics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 1100px) { .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .metrics-grid { grid-template-columns: minmax(0, 1fr); } }
+.metric-card {
+  padding: 16px 18px;
+  height: 110px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  position: relative;
+  overflow: hidden;
+}
+.metric-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 18px; right: 18px;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-soft), transparent);
+  pointer-events: none;
+}
+.metric-label {
+  font-size: 11.5px;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  display: flex; align-items: center; gap: 6px;
+  min-height: 16px;
+}
+.metric-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 30px; font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.metric-value.muted { color: var(--text-muted); }
+.metric-card.em .metric-value { font-size: 34px; }
+.metric-delta { font-size: 12px; font-family: var(--font-mono); color: var(--text-muted); min-height: 16px; white-space: nowrap; }
+.metric-delta .up { color: var(--accent-strong); }
+.metric-delta .warn { color: var(--amber); }
+
+/* ============================================================
+   Overview hero KPIs & platform sections
+   ============================================================ */
+.kpi-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 700px) { .kpi-grid { grid-template-columns: minmax(0, 1fr); } }
+.kpi-hero { height: 148px; justify-content: center; gap: 10px; }
+.kpi-hero .metric-value { font-size: 56px; }
+.platform-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.platform-card { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; min-height: 92px; }
+.platform-card.off { opacity: 0.55; }
+.plat-badge {
+  width: 30px; height: 30px;
+  border-radius: var(--radius-control);
+  display: grid; place-items: center;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  flex: none;
+}
+.plat-name { font-size: 13px; font-weight: 600; }
+.plat-num { font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); }
+.plat-head { display: flex; align-items: center; gap: 10px; }
+
+/* ============================================================
+   Blogger cards
+   ============================================================ */
+.blogger-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+.blogger-card { padding: 16px 18px; cursor: pointer; transition: border-color var(--duration-base) ease, transform var(--duration-fast) ease; display: flex; flex-direction: column; gap: 12px; }
+.blogger-card:hover { border-color: var(--accent-border); }
+.blogger-card:active { transform: scale(0.995); }
+.bc-head { display: flex; align-items: center; gap: 10px; }
+.bc-avatar {
+  width: 34px; height: 34px;
+  border-radius: var(--radius-control);
+  display: grid; place-items: center;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  flex: none;
+}
+.bc-name { font-size: 15px; font-weight: 600; }
+.bc-sub { font-size: 11.5px; color: var(--text-muted); }
+.bc-kpis { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-muted); }
+.bc-kpis b { color: var(--text); font-family: var(--font-mono); font-weight: 600; }
+.bc-range { font-size: 11.5px; color: var(--text-faint); font-family: var(--font-mono); }
+
+/* ============================================================
+   Detail head & meta grid
+   ============================================================ */
+.detail-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 16px;
+}
+.detail-head .model-ident { flex: 1; min-width: 220px; }
+.detail-head .model-ident h2 {
+  margin: 4px 0 2px;
+  font-size: 17px; font-weight: 600;
+  letter-spacing: -0.01em;
+  word-break: break-all;
+}
+.detail-head .actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.detail-meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; padding: 0 16px 16px; }
+.detail-meta { padding: 12px 14px; }
+.detail-meta .k { font-size: 11.5px; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+.detail-meta .v { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 16px; font-weight: 600; word-break: break-all; }
+.detail-meta .s { font-size: 11.5px; color: var(--text-muted); margin-top: 3px; }
+.bio-text { padding: 0 16px 16px; font-size: 12.5px; color: var(--text-secondary); white-space: pre-wrap; }
+.bio-text .k { font-size: 11.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+
+/* ============================================================
+   Table
+   ============================================================ */
+.table-toolbar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.table-toolbar .spacer { flex: 1; }
+.table-wrap { overflow-x: auto; }
+table.data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.data-table th {
+  position: sticky; top: 0; z-index: 2;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 11.5px; font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-strong);
+  white-space: nowrap;
+  user-select: none;
+}
+.data-table th.rt, .data-table td.rt { text-align: right; }
+.data-table td {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  color: var(--text);
+}
+.data-table tbody tr:last-child td { border-bottom: none; }
+.data-table tbody tr { cursor: pointer; }
+.data-table tbody tr:hover { background: var(--panel-hover); }
+.data-table td.num-cell { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+.data-table td .truncate { display: inline-block; max-width: 320px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.data-table td .vcell { color: var(--text-secondary); }
+.data-table td .unknown-cell { color: var(--text-faint); }
+.data-table td .title-cell { color: var(--text); font-weight: 500; }
+.data-table td .seq-cell { color: var(--text-faint); font-family: var(--font-mono); }
+.data-table tfoot td { padding: 10px 12px; font-size: 12px; color: var(--text-muted); }
+.provider-badge {
+  font-size: 10.5px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+  background: var(--panel);
+  white-space: nowrap;
+}
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
+.dot.ok { background: var(--ok); }
+.dot.amber { background: var(--amber); }
+.dot.faint { background: var(--text-faint); }
+
+/* analysis sections */
+.fmt-bar { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--border); align-items: center; }
+.sec-body { padding: 16px; font-size: 13px; color: var(--text-secondary); white-space: pre-wrap; word-break: break-word; }
+pre.raw {
+  white-space: pre-wrap; word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  max-height: 640px;
+  overflow: auto;
+}
+.raw-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+.raw-head .title { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); display: flex; align-items: center; gap: 8px; }
+
+/* ============================================================
+   Empty / error / banner
+   ============================================================ */
+.empty { padding: 48px 20px; text-align: center; color: var(--text-muted); font-size: 12.5px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.empty .empty-icon { color: var(--text-faint); }
+.banner {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--amber-border);
+  background: var(--amber-soft);
+  font-size: 12.5px;
+  color: var(--amber);
+}
+.banner code { font-family: var(--font-mono); font-size: 12px; background: var(--tooltip-bg); padding: 1px 6px; border-radius: 4px; color: var(--text-secondary); }
+.banner .spacer { flex: 1; }
+
+/* ============================================================
+   Modal
+   ============================================================ */
+.overlay {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  z-index: var(--z-overlay);
+  display: none;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: auto;
+  padding: 48px 16px;
+}
+.overlay.show { display: flex; }
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  width: 100%;
+  max-width: 560px;
+  animation: popIn var(--duration-base) var(--ease-out);
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.modal-head h3 { font-size: 14px; font-weight: 600; }
+.modal-body { padding: 16px 18px; }
+.modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--border); }
+label.fld { font-size: 11.5px; color: var(--text-muted); display: block; margin: 12px 0 4px; letter-spacing: 0.03em; }
+label.fld:first-child { margin-top: 0; }
+input[type=text], input[type=number], textarea, select.fld {
+  padding: 6px 10px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  width: 100%;
+}
+textarea { resize: vertical; min-height: 80px; }
+input:focus, textarea:focus, select.fld:focus { border-color: var(--accent-border); outline: none; }
+.fld-hint { font-size: 11px; color: var(--text-faint); margin-top: 3px; }
+.form-row { display: flex; gap: 10px; }
+.form-row > div { flex: 1; }
+
+/* menu (dropdown) */
+.menu-wrap { position: relative; }
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: var(--z-menu);
+  background: var(--tooltip-bg);
+  border: 1px solid var(--tooltip-border);
+  border-radius: var(--radius-control);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  padding: 6px;
+  min-width: 190px;
+  animation: popIn var(--duration-fast) var(--ease-out);
+  display: none;
+}
+.menu.open { display: block; }
+.menu-item {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 6px 8px;
+  border: none; background: transparent;
+  color: var(--text);
+  font: inherit; font-size: 12.5px;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+}
+.menu-item:hover { background: var(--panel-hover); }
+.menu-item .check { width: 14px; color: var(--accent); flex: none; }
+.menu-item .ic { width: 14px; color: var(--text-muted); flex: none; }
+.menu-item:disabled { opacity: 0.45; cursor: not-allowed; }
+.menu-sep { height: 1px; background: var(--border); margin: 5px 6px; }
+.theme-item .theme-swatch {
+  width: 26px; height: 18px;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  flex: none;
+  display: inline-block;
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* toast */
+.toast {
+  position: fixed;
+  bottom: 24px; left: 50%;
+  transform: translateX(-50%);
+  background: var(--tooltip-bg);
+  border: 1px solid var(--tooltip-border);
+  color: var(--text);
+  padding: 9px 16px;
+  border-radius: var(--radius-control);
+  font-size: 12.5px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  z-index: 200;
+  display: none;
+  animation: popIn var(--duration-fast) var(--ease-out);
+}
+
+/* loading shimmer */
+.skel { border-radius: var(--radius-card); }
+.skel .skel-line {
+  height: 12px; border-radius: 4px;
+  background: linear-gradient(90deg, var(--panel) 25%, var(--panel-hover) 50%, var(--panel) 75%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  margin-bottom: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}
+@keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6.5c-3.8 1.4-6 3.9-6 6.5 0 4.4 4 8 9 8s9-3.6 9-8c0-2.6-2.2-5.1-6-6.5"/><path d="M15 9.5c-3.8 1.4-6 3.9-6 6.5 0 4.4 4 8 9 8s9-3.6 9-8c0-2.6-2.2-5.1-6-6.5" opacity="0"/><path d="M7 15c1.5 0 1.5-2 3-2s1.5 2 3 2 1.5-2 3-2 1.5 2 3 2" opacity="0"/><polyline points="16 8 17.5 5.5 19 9 22 7.5"/></svg>
+      </span>
+      <div>
+        <div class="brand-title">抖音博主数据库</div>
+        <div class="brand-sub">local · sqlite</div>
+      </div>
+    </div>
+    <div class="status-pill" role="status" aria-live="polite">
+      <span class="status-dot" id="statusDot"></span>
+      <span class="status-label" id="statusLabel">连接中</span>
+    </div>
+    <span class="last-updated" id="lastUpdated"></span>
+    <div class="topbar-spacer"></div>
+    <div class="topbar-actions">
+      <div class="menu-wrap" id="themeWrap">
+        <button type="button" class="ctl" id="themeBtn" aria-label="主题" title="主题"></button>
+        <div class="menu" id="themeMenu"></div>
+      </div>
+      <div class="topbar-divider" aria-hidden="true"></div>
+      <div class="menu-wrap" id="exportWrap">
+        <button type="button" class="btn" id="exportBtn">
+          <svg class="ctl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          导出
+        </button>
+        <div class="menu" id="exportMenu">
+          <button class="menu-item" data-export="json"><span class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>JSON</button>
+          <button class="menu-item" data-export="csv"><span class="ic"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></span>CSV</button>
+        </div>
+      </div>
+      <button type="button" class="btn" onclick="location.hash='#/daily'" title="每日 AI 信息差日报" style="gap:6px">
+        <svg class="ctl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        信息差
+      </button>
+      <button type="button" class="btn" onclick="location.hash='#/progress'" title="采集进度" style="gap:6px">
+        <svg class="ctl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12v-2a5 5 0 0 0-5-5H8a5 5 0 0 0-5 5v2"/><circle cx="12" cy="15" r="2"/><path d="M3 9 5 7l4-4a2 2 0 0 1 1-1h4a2 2 0 0 1 2 1l2 2 2 2h-1"/><path d="m3 9 2 2-2 2"/><path d="m21 9-2 2 2 2"/></svg>
+        采集进度
+      </button>
+      <button type="button" class="btn primary" id="newBloggerBtn">
+        <svg class="ctl-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        新建博主
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="app-main" id="main">
+  <div class="panel skel"><div style="padding:16px">
+    <div class="skel-line" style="width:40%"></div>
+    <div class="skel-line" style="width:80%"></div>
+    <div class="skel-line" style="width:60%"></div>
+  </div></div>
+</main>
+
+<div class="overlay" id="overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal" id="modalBox"></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   Icons (lucide-style, 24px viewBox, 1.5px stroke)
+   ============================================================ */
+const ICONS = {
+  activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+  database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>',
+  users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  film: '<rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/>',
+  file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>',
+  chart: '<line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>',
+  flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>',
+  clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+  search: '<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  sun: '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>',
+  moon: '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>',
+  plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',
+  external: '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
+  chevronL: '<polyline points="15 18 9 12 15 6"/>',
+  send: '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
+  chevronR: '<polyline points="9 18 15 12 9 6"/>',
+  arrowL: '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
+  copy: '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+  edit: '<path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>',
+  trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  alert: '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+  refresh: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
+  palette: '<circle cx="13.5" cy="6.5" r=".5"/><circle cx="17.5" cy="10.5" r=".5"/><circle cx="8.5" cy="7.5" r=".5"/><circle cx="6.5" cy="12.5" r=".5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/>',
+};
+function icon(name, size = 15) {
+  return `<svg class="ctl-icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||ICONS.chart}</svg>`;
+}
+
+/* ============================================================
+   Theme system — 7 built-in themes (same cores as Token Observatory)
+   ============================================================ */
+const THEMES = {
+  "black-knight": { mode: "dark", label: "黑武士", bg: "#0a0b0e", panel: "#121318", border: "#26272f", text: "#e6e8ee", textSecondary: "#9aa3b2", textMuted: "#5d6675", accent: "#e0404a", ok: "#4bb472", amber: "#d9a04a", danger: "#ff5560" },
+  silver: { mode: "light", label: "银色", bg: "#e8eaee", panel: "#ffffff", border: "#c9cfd8", text: "#1c232c", textSecondary: "#4c5765", textMuted: "#7c8794", accent: "#46688c", ok: "#3f7d52", amber: "#a0671e", danger: "#c04250" },
+  gunmetal: { mode: "light", label: "银灰", bg: "#d8dce2", panel: "#eef1f4", border: "#b9c0ca", text: "#22282f", textSecondary: "#4d5863", textMuted: "#79848f", accent: "#5a7a9c", ok: "#477c54", amber: "#9c6420", danger: "#b6424e" },
+  "pure-white": { mode: "light", label: "纯白", bg: "#f7f7f8", panel: "#ffffff", border: "#e0e2e6", text: "#17181c", textSecondary: "#4c5058", textMuted: "#7d828c", accent: "#2f6fdb", ok: "#2e8a4c", amber: "#9c6a16", danger: "#cc3b4d" },
+  sakura: { mode: "light", label: "樱花粉", bg: "#f8f4f6", panel: "#ffffff", border: "#e7dbe0", text: "#33272d", textSecondary: "#6c5560", textMuted: "#9a8792", accent: "#c76f96", ok: "#55895e", amber: "#a5823c", danger: "#c2505f" },
+  deepsea: { mode: "dark", label: "深海青", bg: "#06101a", panel: "#0b1721", border: "#17303e", text: "#d9e7ee", textSecondary: "#8fa8b4", textMuted: "#5b7380", accent: "#2ed3a3", ok: "#3ecf86", amber: "#d9a44a", danger: "#ff6a5e" },
+  aurora: { mode: "dark", label: "极光冷色", bg: "#0a0d18", panel: "#101423", border: "#232b45", text: "#dce2f6", textSecondary: "#93a0c2", textMuted: "#5d6885", accent: "#4fd3e8", ok: "#56c98f", amber: "#c9a05c", danger: "#f4718f" },
+};
+function hexToRgb(h) { const v = h.replace("#", "").padStart(6, "0"); const n = parseInt(v, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function rgbToHex(r, g, b) { const c = n => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, "0"); return `#${c(r)}${c(g)}${c(b)}`; }
+function mix(a, b, t) { const [ar, ag, ab] = hexToRgb(a), [br, bg, bb] = hexToRgb(b); return rgbToHex(ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t); }
+function lighten(hex, pct) { const [r, g, b] = hexToRgb(hex); return rgbToHex(r + (255 - r) * pct, g + (255 - g) * pct, b + (255 - b) * pct); }
+function darken(hex, pct) { const [r, g, b] = hexToRgb(hex); return rgbToHex(r * (1 - pct), g * (1 - pct), b * (1 - pct)); }
+function alpha(hex, a) { const [r, g, b] = hexToRgb(hex); return `rgba(${r}, ${g}, ${b}, ${a})`; }
+function buildVars(core) {
+  const dark = core.mode === "dark";
+  return {
+    "--bg": core.bg,
+    "--bg-elevated": dark ? lighten(core.panel, 0.03) : mix(core.panel, "#ffffff", 0.8),
+    "--panel": core.panel,
+    "--panel-hover": dark ? lighten(core.panel, 0.05) : mix(core.panel, core.bg, 0.28),
+    "--border": core.border,
+    "--border-strong": dark ? lighten(core.border, 0.2) : darken(core.border, 0.12),
+    "--text": core.text,
+    "--text-secondary": core.textSecondary,
+    "--text-muted": core.textMuted,
+    "--text-faint": dark ? mix(core.textMuted, core.bg, 0.38) : mix(core.textMuted, "#ffffff", 0.4),
+    "--accent": core.accent,
+    "--accent-strong": dark ? lighten(core.accent, 0.16) : darken(core.accent, 0.12),
+    "--accent-soft": alpha(core.accent, dark ? 0.14 : 0.1),
+    "--accent-border": alpha(core.accent, dark ? 0.38 : 0.45),
+    "--amber": core.amber,
+    "--amber-soft": alpha(core.amber, dark ? 0.13 : 0.11),
+    "--amber-border": alpha(core.amber, dark ? 0.38 : 0.45),
+    "--danger": core.danger,
+    "--danger-soft": alpha(core.danger, dark ? 0.12 : 0.08),
+    "--ok": core.ok,
+    "--ok-soft": alpha(core.ok, dark ? 0.12 : 0.1),
+    "--grid-dot": alpha(core.textSecondary, dark ? 0.1 : 0.16),
+    "--shadow-panel": dark ? "0 1px 2px rgba(0, 0, 0, 0.35)" : "0 1px 2px rgba(20, 30, 45, 0.07)",
+    "--tooltip-bg": dark ? lighten(core.panel, 0.08) : "#ffffff",
+    "--tooltip-border": dark ? lighten(core.border, 0.2) : darken(core.border, 0.12),
+  };
+}
+function applyTheme(id) {
+  const core = THEMES[id] || THEMES["black-knight"];
+  const vars = buildVars(core);
+  const root = document.documentElement;
+  for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
+  root.dataset.mode = core.mode;
+  root.dataset.theme = id;
+  localStorage.setItem("dbb-theme", id);
+  $("#themeBtn").innerHTML = icon("palette", 15);
+  renderThemeMenu();
+}
+function renderThemeMenu() {
+  const cur = document.documentElement.dataset.theme || "black-knight";
+  $("#themeMenu").innerHTML = Object.entries(THEMES).map(([id, t]) => `
+    <button class="menu-item theme-item" data-tid="${id}">
+      <span class="theme-swatch" style="background:linear-gradient(135deg, ${t.accent} 0 28%, ${t.bg} 28% 62%, ${t.text} 62%)"></span>
+      <span style="flex:1">${t.label}</span>
+      <span class="check">${id === cur ? "✓" : ""}</span>
+    </button>`).join("");
+}
+
+/* ============================================================
+   Helpers
+   ============================================================ */
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = n => n == null || n === 0 ? "—" : Number(n).toLocaleString("zh-CN");
+const fmtDate = d => {
+  if (!d) return "—";
+  const s = String(d);
+  if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  return s;
+};
+async function api(path, opts = {}) {
+  const r = await fetch("/api" + path, { headers: { "Content-Type": "application/json" }, ...opts });
+  if (!r.ok) { let m = "请求失败"; try { m = (await r.json()).detail || m } catch (e) {} throw new Error(m); }
+  return r.status === 204 ? null : r.json();
+}
+function toast(msg) {
+  const t = $("#toast");
+  t.textContent = msg;
+  t.style.display = "block";
+  clearTimeout(t._h);
+  t._h = setTimeout(() => { t.style.display = "none"; }, 2200);
+}
+function modal(html) { $("#modalBox").innerHTML = html; $("#overlay").classList.add("show"); }
+function closeModal() { $("#overlay").classList.remove("show"); }
+function showBanner(html) {
+  $("#main").insertAdjacentHTML("afterbegin", `<div class="banner">${icon("alert", 15)}<span>${html}</span></div>`);
+}
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); toast("已复制"); }
+  catch (e) { const ta = document.createElement("textarea"); ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); toast("已复制"); }
+}
+function setStatus(state, text) {
+  const dot = $("#statusDot"), label = $("#statusLabel");
+  dot.className = "status-dot " + state;
+  label.textContent = text;
+}
+
+/* theme wiring */
+$("#themeBtn").addEventListener("click", e => {
+  e.stopPropagation();
+  renderThemeMenu();
+  $("#themeMenu").classList.toggle("open");
+});
+$("#themeMenu").addEventListener("click", e => {
+  const it = e.target.closest("[data-tid]");
+  if (it) { applyTheme(it.dataset.tid); $("#themeMenu").classList.remove("open"); }
+});
+document.addEventListener("click", e => {
+  if (!e.target.closest("#themeWrap")) $("#themeMenu").classList.remove("open");
+});
+applyTheme(localStorage.getItem("dbb-theme") || "black-knight");
+
+/* export menu */
+$("#exportBtn").addEventListener("click", e => { e.stopPropagation(); $("#exportMenu").classList.toggle("open"); });
+document.addEventListener("click", e => {
+  if (!e.target.closest("#exportWrap")) $("#exportMenu").classList.remove("open");
+});
+document.querySelectorAll("#exportMenu .menu-item").forEach(b => {
+  b.addEventListener("click", () => {
+    $("#exportMenu").classList.remove("open");
+    const f = b.dataset.export;
+    const bid = location.hash.startsWith("#/blogger/") ? location.hash.split("/")[2] : "";
+    doExport(f, bid);
+  });
+});
+async function doExport(format, bloggerId) {
+  try {
+    const url = `/api/export?format=${format}${bloggerId ? `&blogger_id=${bloggerId}` : ""}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error("导出失败（" + r.status + "）");
+    const blob = await r.blob();
+    const ext = format === "csv" ? "csv" : "json";
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `douyin_blog_export_${new Date().toISOString().slice(0, 10)}.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    toast("已导出 " + format.toUpperCase());
+  } catch (err) {
+    toast(err.message);
+  }
+}
+async function startDownload(id, btn) {
+  try {
+    const r = await api(`/videos/${id}/download`);
+    const t = r.task_id;
+    if (btn) { btn.disabled = true; btn.textContent = "…"; }
+    const poll = setInterval(async () => {
+      try {
+        const st = await api(`/tasks/${t}`);
+        if (st.status === "done") {
+          clearInterval(poll);
+          if (btn) { btn.disabled = false; btn.innerHTML = icon("download", 13); }
+          toast("下载完成：" + (st.path || ""));
+        } else if (st.status === "failed") {
+          clearInterval(poll);
+          if (btn) { btn.disabled = false; btn.innerHTML = icon("download", 13); }
+          toast("下载失败：" + (st.log[st.log.length - 1] || ""));
+        }
+      } catch (e) { clearInterval(poll); toast(e.message); }
+    }, 1500);
+  } catch (e) { toast(e.message); }
+}
+
+/* ============================================================
+   Router
+   ============================================================ */
+let lastHash = "";
+async function render() {
+  const h = location.hash;
+  if (h !== lastHash) { counted.clear(); lastHash = h; }
+  try {
+    if (h.startsWith("#/progress")) return renderProgress();
+    if (h.startsWith("#/schedule")) return renderSchedule();
+    if (h.startsWith("#/queue")) return renderQueue();
+    if (h.startsWith("#/settings")) return renderSettings();
+    if (h.startsWith("#/daily")) return renderDailyRoute(h);
+    if (h.startsWith("#/blogger/")) return renderBlogger(h.split("/")[2]);
+    if (h.startsWith("#/video/")) return renderVideo(h.split("/")[2]);
+    if (h.startsWith("#/platform/")) return renderPlatform(decodeURIComponent(h.split("/")[2]));
+    return renderHome();
+  } catch (err) {
+    setStatus("err", "错误");
+    $("#main").innerHTML = `<div class="panel"><div class="empty">${icon("alert", 20)}<div>${esc(err.message)}</div><button class="btn" onclick="location.reload()">${icon("refresh", 14)} 重试</button></div></div>`;
+  }
+}
+window.addEventListener("hashchange", render);
+window.addEventListener("load", render);
+
+/* ============================================================
+   Daily 信息差（三级：日期列表 → 主题板块 → 视频详情）
+   ============================================================ */
+let _dailyCache = { items: [] };
+
+async function renderDailyRoute(h) {
+  const parts = h.replace(/^#\/?/, "").split("/").filter(Boolean);   // ["daily", date, vid]
+  if (!_dailyCache.items.length) {
+    const d = await api("/daily?limit=14");
+    _dailyCache.items = d.items || [];
+  }
+  if (parts.length === 1) return renderDailyList();
+  if (parts.length === 2) return renderDailyDate(parts[1]);
+  return renderDailyVideo(parts[1], decodeURIComponent(parts[2]));
+}
+
+function dailyFind(date, vid) {
+  const rep = _dailyCache.items.find(r => r.date === date);
+  if (!rep) return null;
+  const raw = decodeURIComponent(vid);
+  for (const t of rep.topics) {
+    const it = t.items.find(x => x.url === raw || (x.url || "").includes(raw) || (x.title || "") === raw);
+    if (it) return { ...it, topic: t.name };
+  }
+  return null;
+}
+
+function renderDailyList() {
+  const reports = _dailyCache.items;
+  $("#main").innerHTML = `
+    <div class="crumbs">${icon("chevronL", 13)} <a href="#/">概览</a> / <span>每日信息差</span></div>
+    <div class="panel" style="padding:16px 18px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="section-title">AI 信息差日报</span>
+        <span style="flex:1"></span>
+        <span class="last-updated">抖音 / B站 / YouTube · 近7天 · 每主题 3 条 · 点击日期查看</span>
+      </div>
+    </div>
+    ${reports.map(r => `
+      <div class="daily-date-card panel" onclick="location.hash='#/daily/${r.date}'" style="cursor:pointer">
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+          <div class="daily-date-big">${esc(r.date)}</div>
+          <div style="flex:1;min-width:180px">
+            <div style="font-size:13px;color:var(--text)">${r.topics.length} 个主题 · ${r.topics.reduce((s,t)=>s+t.items.length,0)} 条候选</div>
+            <div class="daily-meta" style="padding-right:0">${r.topics.map(t=>`${esc(t.name)}(${t.items.length})`).join(" · ")}</div>
+          </div>
+          <span class="btn">${icon("chevronR", 13)} 查看</span>
+        </div>
+      </div>`).join("") || `<div class="panel"><div class="empty">${icon("search", 20)}<div>暂无日报，等待每日 09:00 自动生成</div></div></div>`}`;
+  setStatus("ok", "正常");
+}
+
+function renderDailyDate(date) {
+  const rep = _dailyCache.items.find(r => r.date === date);
+  if (!rep) { toast("未找到该日报"); location.hash = "#/daily"; return; }
+  $("#main").innerHTML = `
+    <div class="crumbs">${icon("chevronL", 13)} <a href="#/">概览</a> / <a href="#/daily">每日信息差</a> / <span>${esc(date)}</span></div>
+    <div class="panel" style="padding:16px 18px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="section-title">${esc(date)} 信息差日报</span>
+        <span style="flex:1"></span>
+        <button class="btn" onclick="exportDailyHTML('${esc(date)}')">${icon("download", 14)} 导出 HTML</button>
+        <span class="last-updated">点击标题查看摘要与点评 · 共 ${rep.topics.length} 主题</span>
+      </div>
+    </div>
+    <div class="daily-topic-grid">
+      ${rep.topics.map(t => `
+        <div class="panel daily-topic">
+          <div class="daily-topic-head">${esc(t.name)}</div>
+          ${t.items.map(it => `
+            <div class="daily-item">
+              <a href="#/daily/${date}/${encodeURIComponent(it.url)}" title="查看摘要">${esc(it.title)}</a>
+              <div class="daily-meta">${esc(it.author)} · ${esc(it.platform)} · 热度${esc(it.hot)} · ${esc(it.date)}</div>
+              ${it.summary ? `<div class="daily-summary">${esc(it.summary)}</div>` : `<div class="daily-summary dim">摘要生成中…</div>`}
+            </div>`).join("") || `<div class="daily-item"><span class="daily-meta">（该主题当日无合格内容）</span></div>`}
+        </div>`).join("")}
+    </div>`;
+  setStatus("ok", "正常");
+}
+
+async function exportDailyHTML(date) {
+  toast("正在导出 HTML…");
+  try {
+    const r = await api(`/daily/export?date=${encodeURIComponent(date)}`);
+    if (r.ok) {
+      toast("已导出：" + r.path);
+    } else {
+      toast("❌ " + (r.msg || "导出失败"));
+    }
+  } catch (e) {
+    toast("❌ 导出失败：" + e);
+  }
+}
+
+function renderDailyVideo(date, url) {
+  const item = dailyFind(date, url);
+  if (!item) { toast("未找到该视频"); location.hash = `#/daily/${date}`; return; }
+  $("#main").innerHTML = `
+    <div class="crumbs">${icon("chevronL", 13)} <a href="#/">概览</a> / <a href="#/daily">每日信息差</a> / <a href="#/daily/${date}">${esc(date)}</a> / <span>视频详情</span></div>
+    <div class="panel" style="padding:18px 20px;max-width:860px">
+      <div class="dv-tag">${esc(item.topic || "信息差")}</div>
+      <h2 class="dv-title">${esc(item.title)}</h2>
+      <div class="daily-meta" style="margin:6px 0 14px">${esc(item.author)} · ${esc(item.platform)} · 热度 ${esc(item.hot)} · ${esc(item.date)}</div>
+      <div class="dv-summary-box">
+        <div class="dv-summary-label">${icon("file", 14)} 摘要与点评</div>
+        ${item.summary ? `<div class="dv-summary">${esc(item.summary)}</div>`
+                        : `<div class="dv-summary dim">摘要生成中，稍后刷新查看…</div>`}
+      </div>
+      <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap">
+        <button class="btn primary" onclick="window.open(decodeURIComponent('${encodeURIComponent(item.url)}'),'_blank')">${icon("external", 14)} 打开原视频</button>
+        <button class="btn" onclick="navigator.clipboard.writeText(decodeURIComponent('${encodeURIComponent(item.url)}'));toast('已复制链接')">${icon("copy", 14)} 复制链接</button>
+        <button class="btn" onclick="location.hash='#/daily/${date}'">${icon("chevronL", 13)} 返回</button>
+      </div>
+    </div>`;
+  setStatus("ok", "正常");
+}
+
+/* ============================================================
+   采集进度
+   ============================================================ */
+async function renderProgress() {
+  const s = await api("/pipeline/status");
+  const pipes = s.pipes || [];
+  const daily = s.daily || {};
+  const pct = (d) => d.total ? Math.round(d.done / d.total * 100) : 0;
+  $("#main").innerHTML = `
+    <div class="crumbs">${icon("chevronL", 13)} <a href="#/">概览</a> / <span>采集进度</span></div>
+    <div class="panel" style="padding:18px 20px;max-width:820px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="section-title">采集与转写流水线</span>
+        <span style="flex:1"></span>
+        <button class="btn" onclick="location.hash='#/schedule'">${icon("list", 14)} 任务调度</button>
+        <button class="btn" onclick="location.hash='#/queue'">${icon("list", 14)} 队列调控</button>
+        <button class="btn" onclick="location.hash='#/settings'">${icon("settings", 14)} 转写设置</button>
+        <button class="btn" onclick="location.reload()">${icon("refresh", 14)} 刷新</button>
+      </div>
+      <div class="last-updated" style="margin-top:4px">全部后台静默运行，不会弹出终端窗口</div>
+    </div>
+
+    ${pipes.map(p => `
+      <div class="panel" style="padding:16px 18px;max-width:820px;margin-top:12px">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span class="section-title">${esc(p.name)}</span>
+          <span style="flex:1"></span>
+          <span class="pill ${p.running ? "pill-ok" : "pill-muted"}">${p.running ? "转写中" : "已停止/完成"}</span>
+        </div>
+        <div style="margin:12px 0 6px;display:flex;align-items:baseline;gap:10px">
+          <span class="num" style="font-size:22px;font-weight:700;color:var(--accent)">${p.done}</span>
+          <span style="color:var(--text-muted)">/ ${p.total} 条 · ${pct(p)}%</span>
+          <span style="flex:1"></span>
+          <span class="last-updated">${p.running ? `剩余 ${Math.max(p.total - p.done, 0)} 条` : "字幕已生成，可入库"}</span>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" style="width:${pct(p)}%"></div></div>
+        <pre class="raw" style="margin-top:10px;max-height:130px;overflow:auto;font-size:11px">${esc((p.log_tail || []).join("\n") || "暂无日志")}</pre>
+      </div>`).join("")}
+
+    <div class="panel" style="padding:16px 18px;max-width:820px;margin-top:12px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="section-title">每日信息差 · 转写</span>
+        <span style="flex:1"></span>
+        <span class="pill ${daily.running ? "pill-ok" : "pill-muted"}">${daily.running ? "转写中" : "空闲"}</span>
+      </div>
+      <div style="margin:12px 0 6px;display:flex;align-items:baseline;gap:10px">
+        <span class="num" style="font-size:22px;font-weight:700;color:var(--accent)">${daily.transcribed || 0}</span>
+        <span style="color:var(--text-muted)">/ ${daily.candidates || 0} 条候选转写</span>
+        <span style="flex:1"></span>
+        <span class="last-updated">${daily.date || "—"} · 已写摘要 ${daily.summarized || 0} 条</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${daily.candidates ? Math.round((daily.transcribed||0)/daily.candidates*100) : 0}%"></div></div>
+      <div class="last-updated" style="margin-top:8px">转写完成后通知 AI 撰写摘要</div>
+    </div>`;
+  setStatus("ok", "正常");
+}
+
+/* ============================================================
+   Schedule（项目级任务调度）
+   ============================================================ */
+let _schedule = { items: [] };
+async function renderSchedule() {
+  const s = await api("/schedule");
+  _schedule = { items: (s.items || []).map(x => ({ ...x, skip: x.skip || false, state: x.state || "auto" })) };
+  const stBadge = (it) => {
+    if (it.running) return `<span class="pill pill-ok">运行中</span>`;
+    if (it.done) return `<span class="pill pill-muted">已完成</span>`;
+    if (it.state === "idle") return `<span class="pill pill-muted">已暂停</span>`;
+    if (!it.enabled) return `<span class="pill pill-muted">已停用</span>`;
+    return `<span class="pill" style="background:var(--accent-soft);color:var(--accent)">排队中</span>`;
+  };
+  $("#main").innerHTML = `
+    <div class="crumbs">${icon("chevronL", 13)} <a href="#/">概览</a> / <a href="#/progress">采集进度</a> / <span>任务调度</span></div>
+    <div class="panel" style="padding:16px 18px;max-width:820px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="section-title">项目调度</span>
+        <span style="flex:1"></span>
+        <button class="btn" onclick="scheduleSave()">${icon("save", 13)} 保存顺序</button>
+      </div>
+      <div class="last-updated" style="margin-top:4px">越靠上越先跑：调整项目先后顺序，保存后调度器按新顺序自动启动下一个（运行中的不受影响）</div>
+    </div>
+    <div style="max-width:820px">
+      ${_schedule.items.map((it, i) => `
+        <div class="panel" style="padding:12px 16px;margin-top:8px;display:flex;align-items:center;gap:12px">
+          <div style="display:flex;flex-direction:column;gap:2px">
+            <button class="btn btn-sm" ${i === 0 ? "disabled" : ""} onclick="scheduleMove(${i},-1)">${icon("chevronL", 12)}</button>
+            <button class="btn btn-sm" ${i === _schedule.items.length - 1 ? "disabled" : ""} onclick="scheduleMove(${i},1)">${icon("chevronR", 12)}</button>
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600">${esc(it.name)}</div>
+            <div class="last-updated" style="font-size:11px;margin-top:2px">${esc(it.detail || it.progress || "")}</div>
+          </div>
+          ${stBadge(it)}
+          <span class="pill pill-muted" style="min-width:64px;text-align:center">${esc(it.progress || "")}</span>
+          <button class="btn btn-sm" onclick="scheduleToggle(${i})">${it.enabled ? "停用" : "启用"}</button>
+          <button class="btn btn-sm" onclick="scheduleState(${i})">${it.state === "auto" ? "暂停" : "恢复"}</button>
+          <button class="btn btn-sm" onclick="scheduleRerun(${i})" ${it.done ? "" : "disabled"}>重跑</button>
+        </div>`).join("")}
+    </div>
+    <div class="panel" style="padding:14px 18px;max-width:820px;margin-top:12px">
+      <div class="last-updated" style="font-size:11px;line-height:1.8">
+        说明：调度器后台常驻，每 20 秒检查一次。项目正常跑完记录完成时间（12h 内不自动重跑），异常退出会自动重试。「重跑」清掉完成标记让调度器立即再启。
+      </div>
+    </div>`;
+  setStatus("ok", "正常");
+}
+function scheduleMove(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= _schedule.items.length) return;
+  const a = _schedule.items[i], b = _schedule.items[j];
+  _schedule.items[i] = b; _schedule.items[j] = a;
+  renderSchedule();
+}
+function scheduleToggle(i) {
+  _schedule.items[i].enabled = !_schedule.items[i].enabled;
+  renderSchedule();
+}
+function scheduleState(i) {
+  _schedule.items[i].state = _schedule.items[i].state === "auto" ? "idle" : "auto";
+  renderSchedule();
+}
+async function scheduleRerun(i) {
+  const id = _schedule.items[i].id;
+  const cur = await api("/schedule");
+  const completed = cur.completed || {};
+  const failed = cur.failed || {};
+  delete completed[id];
+  delete failed[id];
+  await api("/schedule", { method: "PUT", body: JSON.stringify({ items: _schedule.items.map(({ name, detail, running, done, progress, ...rest }) => rest), completed, failed }) });
+  toast("已标记重跑，调度器即将启动");
+  renderSchedule();
+}
+async function scheduleSave() {
+  const items = _schedule.items.map(({ name, detail, running, done, progress, ...rest }) => rest);
+  const cur = await api("/schedule");
+  await api("/schedule", { method: "PUT", body: JSON.stringify({ items, completed: cur.completed || {}, failed: cur.failed || {} }) });
+  toast("调度顺序已保存");
+  renderSchedule();
+}
+
+/* ============================================================
+   Queue（转写队列调控）
+   ============================================================ */
+let _queueState = { order: [], skip: [], pending: [] };
+async function renderQueue() {
+  const q = await api("/queue");
+  const items = q.items || [];
+  const todo = q.todo || {};
+  let order = Array.isArray(todo.order) ? todo.order.map(Number) : [];
+  let skip = new Set((Array.isArray(todo.skip) ? todo.skip : []).map(Number));
+  let pending = items.filter(it => !it.done);
+  if (order.length) pending.sort((a, b) => {
+    const ai = order.indexOf(a.seq), bi = order.indexOf(b.seq);
+    return (ai < 0 ? 999 + a.seq : ai) - (bi < 0 ? 999 + b.seq : bi);
+  });
+  _queueState = { order, skip, pending };
+  const row = (it, i) => `
+    <div class="panel" style="padding:10px 14px;margin-top:8px;display:flex;align-items:center;gap:10px">
+      <span class="pill ${skip.has(it.seq) ? "pill-muted" : "pill-ok"}" style="min-width:44px;text-align:center">#${it.seq}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.title || it.vid)}</div>
+        <div class="last-updated" style="font-size:11px">${it.done ? "已转写" : "待转写"} · ${esc(it.vid)}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="queueMove(${i},-1)">${icon("chevronL", 12)}</button>
+        <button class="btn btn-sm" onclick="queueMove(${i},1)">${icon("chevronR", 12)}</button>
+        <button class="btn btn-sm" onclick="queueSkip(${it.seq},${skip.has(it.seq)})">${skip.has(it.seq) ? "恢复" : "跳过"}</button>
+      </div>
+    </div>`;
+  const doneItems = items.filter(it => it.done);
+  $("#main").innerHTML = `
+    <div class="crumbs">${icon("chevronL", 13)} <a href="#/">概览</a> / <a href="#/progress">采集进度</a> / <span>队列调控</span></div>
+    <div class="panel" style="padding:16px 18px;max-width:820px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="section-title">转写队列</span>
+        <span style="flex:1"></span>
+        <span class="last-updated">待转写 ${pending.length} / 已转写 ${doneItems.length}</span>
+      </div>
+      <div class="last-updated" style="margin-top:4px">用箭头调整先后顺序，跳过=本轮不转写；保存后重启流水线生效</div>
+      <div style="margin-top:12px;display:flex;gap:8px">
+        <button class="btn" onclick="queueSave()">${icon("save", 13)} 保存顺序</button>
+        <button class="btn" onclick="location.reload()">${icon("refresh", 13)} 刷新</button>
+      </div>
+    </div>
+    <div style="max-width:820px">
+      ${pending.length ? pending.map(row).join("") : '<div class="panel" style="padding:20px;text-align:center;color:var(--text-muted)">全部转写完成 🎉</div>'}
+    </div>
+    <div class="panel" style="padding:14px 18px;max-width:820px;margin-top:12px">
+      <div class="section-title" style="font-size:13px;margin-bottom:6px">已转写（${doneItems.length}）</div>
+      <div class="last-updated" style="font-size:11px;line-height:1.8">${doneItems.map(i => `#${i.seq} ${esc(i.title || i.vid)}`).join(" · ")}</div>
+    </div>`;
+  setStatus("ok", "正常");
+}
+function queueMove(i, dir) {
+  const p = _queueState.pending;
+  const j = i + dir;
+  if (j < 0 || j >= p.length) return;
+  const a = p[i].seq, b = p[j].seq;
+  let order = _queueState.order.filter(s => s !== a && s !== b);
+  const idxA = p.indexOf(p[i]), idxB = p.indexOf(p[j]);
+  order.splice(Math.min(idxA, idxB), 0, a, b);
+  _queueState.order = order;
+  renderQueue();
+}
+function queueSkip(seq, isSkipped) {
+  const s = new Set(_queueState.skip);
+  if (isSkipped) s.delete(seq); else s.add(seq);
+  _queueState.skip = s;
+  renderQueue();
+}
+async function queueSave() {
+  await api("/queue", { method: "PUT", body: JSON.stringify({ order: _queueState.order, skip: [..._queueState.skip] }) });
+  toast("队列已保存（重启流水线后生效）");
+}
+
+/* ============================================================
+   Settings（转写参数设置）
+   ============================================================ */
+async function renderSettings() {
+  const s = await api("/settings");
+  const w = s.whisper || {};
+  const fields = [
+    ["concurrency", "GPU 并行转写路数（1=保守 2=提速 ~2x 3=更快，显存 12G 建议 ≤2）", 1],
+    ["num_workers", "CPU 并行特征提取线程（每路）", 4],
+    ["beam_size", "解码束宽（1 最快，5 更准）", 1],
+    ["sleep_min", "每条间隔下限（秒，防风控）", 1],
+    ["sleep_max", "每条间隔上限（秒）", 3],
+  ];
+  const cur = (k, d) => (w[k] ?? d);
+  $("#main").innerHTML = `
+    <div class="crumbs">${icon("chevronL", 13)} <a href="#/">概览</a> / <a href="#/progress">采集进度</a> / <span>转写设置</span></div>
+    <div class="panel" style="padding:18px 20px;max-width:560px">
+      <div class="section-title">转写参数（实时生效于下次转写）</div>
+      <div class="last-updated" style="margin-top:4px">调大 batch_size 可显著提升 GPU 利用率与速度；间隔改小可减少等待。保存后下次转写自动采用。</div>
+      ${fields.map(([k, desc, d]) => `
+        <div style="margin-top:14px">
+          <label style="font-weight:600;display:block;margin-bottom:4px">${k} <span class="last-updated" style="font-size:11px">${desc}</span></label>
+          <input id="set_${k}" type="number" value="${cur(k, d)}" style="width:100%;box-sizing:border-box">
+        </div>`).join("")}
+      <div style="margin-top:16px;display:flex;gap:8px">
+        <button class="btn" onclick="settingsSave()">${icon("save", 13)} 保存</button>
+      </div>
+    </div>`;
+  setStatus("ok", "正常");
+}
+async function settingsSave() {
+  const body = {};
+  for (const k of ["concurrency", "num_workers", "beam_size", "sleep_min", "sleep_max"]) {
+    const v = parseInt($("#set_" + k).value, 10);
+    if (!isNaN(v) && v > 0) body[k] = v;
+  }
+  await api("/settings", { method: "PUT", body: JSON.stringify(body) });
+  toast("设置已保存");
+}
+
+/* ============================================================
+   Home
+   ============================================================ */
+let homeState = { q: "" };
+let homeData = [];
+let _hs;
+const PLATFORMS = [
+  ["抖音", "抖"], ["快手", "快"], ["B站", "B"], ["小红书", "薯"],
+  ["微博", "微"], ["YouTube", "YT"], ["TikTok", "TT"], ["其他", "?"],
+];
+async function renderHome() {
+  const data = await api("/bloggers");
+  homeData = data;
+  const q = homeState.q.trim().toLowerCase();
+  const list = data.filter(b => !q || [b.name, b.tags, b.douyin_id, b.platform].join(" ").toLowerCase().includes(q));
+  const sum = (k) => data.reduce((s, b) => s + (b[k] || 0), 0);
+  const tot = sum("video_count");          // 全部作品（视频 + 图文）
+  const tv = sum("video_kind_count");      // 纯视频
+  const tn = sum("note_count");            // 图文
+  const ta = sum("analyzed_count");        // 已分析
+  const platMap = {};
+  for (const b of data) {
+    const p = platMap[b.platform] || (platMap[b.platform] = { bloggers: 0, videos: 0 });
+    p.bloggers++; p.videos += b.video_count || 0;
+  }
+  $("#main").innerHTML = `
+    <div class="panel" style="padding:16px 18px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="section-title">概览</span>
+        <div style="flex:1"></div>
+        <input class="search-input" id="homeSearch" placeholder="搜索博主 / 标签 / 抖音ID…" value="${esc(homeState.q)}" style="min-width:220px">
+      </div>
+    </div>
+    <div class="kpi-grid">
+      <div class="metric-card panel em kpi-hero">
+        <div class="metric-label">总收录博主</div>
+        <div class="metric-value" id="kpiBloggers">0</div>
+        <div class="metric-delta">覆盖 <span class="num">${Object.keys(platMap).length}</span> 个平台</div>
+      </div>
+      <div class="metric-card panel em kpi-hero">
+        <div class="metric-label">总收录作品</div>
+        <div class="metric-value" id="kpiVideos">0</div>
+        <div class="metric-delta">视频 <span class="num">${tv}</span> · 图文 <span class="num">${tn}</span> · 已分析 <span class="num">${ta}</span></div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="section-title">平台分区</span>
+      <span style="flex:1"></span>
+      <span class="last-updated">点击平台查看该平台收录的博主</span>
+    </div>
+    <div class="platform-grid">
+      ${PLATFORMS.map(([name, abbr]) => {
+        const p = platMap[name];
+        return `<div class="platform-card panel${p ? "" : " off"}" ${p ? `onclick="location.hash='#/platform/${encodeURIComponent(name)}'"` : ""} style="${p ? "cursor:pointer" : ""}">
+          <div class="plat-head"><span class="plat-badge">${abbr}</span><span class="plat-name">${name}</span></div>
+          ${p ? `<div class="plat-num">${p.bloggers} 位博主 · ${p.videos} 部作品 <span class="dot ok" style="float:right"></span></div>` : `<div class="plat-num"><span class="dot faint"></span>未收录</div>`}
+        </div>`;
+      }).join("")}
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="section-title">博主</span>
+      <span style="flex:1"></span>
+      <span class="last-updated">${list.length} / ${data.length}</span>
+    </div>
+    <div class="blogger-grid">
+      ${list.map(cardHtml).join("") || `<div class="panel"><div class="empty">${icon("search", 20)}<div>未找到匹配的博主</div></div></div>`}
+    </div>`;
+  countUp($("#kpiBloggers"), data.length);
+  countUp($("#kpiVideos"), tot);
+  const s = $("#homeSearch");
+  s.focus(); s.setSelectionRange(s.value.length, s.value.length);
+  s.addEventListener("input", e => { homeState.q = e.target.value; clearTimeout(_hs); _hs = setTimeout(renderHome, 200); });
+  setStatus("ok", "正常");
+  $("#lastUpdated").textContent = `${tot} 条作品 · ${ta} 已分析`;
+}
+
+/* ============================================================
+   Platform view
+   ============================================================ */
+async function renderPlatform(name) {
+  const data = await api("/bloggers");
+  homeData = data;
+  const list = data.filter(b => b.platform === name);
+  if (!list.length) { location.hash = "#/"; return; }
+  const sum = (k) => list.reduce((s, b) => s + (b[k] || 0), 0);
+  const tot = sum("video_count"), tv = sum("video_kind_count"), tn = sum("note_count"), ta = sum("analyzed_count");
+  const hit = sum("hit_count");
+  $("#main").innerHTML = `
+    <div class="crumbs">${icon("chevronL", 13)} <a href="#/">概览</a> / <span>${esc(name)}</span></div>
+    <div class="panel">
+      <div class="detail-head">
+        <div class="model-ident">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span class="bc-avatar">${icon("users", 15)}</span>
+            <h2>${esc(name)} <span class="provider-badge">平台</span></h2>
+          </div>
+          <div class="bc-sub" style="margin-top:4px">收录 ${list.length} 位博主 · 共 ${tot} 部作品</div>
+        </div>
+      </div>
+      <div class="detail-meta-grid">
+        ${dmeta("博主", list.length)}
+        ${dmeta("作品", tot, "视频 " + tv + " · 图文 " + tn)}
+        ${dmeta("已分析", ta)}
+        ${dmeta("爆款(≥1万)", hit)}
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="section-title">博主</span>
+      <span style="flex:1"></span>
+      <span class="last-updated">${list.length} 位</span>
+    </div>
+    <div class="blogger-grid">${list.map(cardHtml).join("")}</div>`;
+  setStatus("ok", "正常");
+}
+const counted = new Set();
+function countUp(el, target) {
+  if (counted.has(el.id)) { el.textContent = target.toLocaleString("zh-CN"); return; }
+  counted.add(el.id);
+  const dur = Math.min(2600, Math.max(900, 600 + target * 0.06));
+  const t0 = performance.now();
+  const ease = t => 1 - Math.pow(1 - t, 3);
+  function step(t) {
+    const p = Math.min(1, (t - t0) / dur);
+    el.textContent = Math.round(target * ease(p)).toLocaleString("zh-CN");
+    if (p < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+function cardHtml(b) {
+  return `<div class="blogger-card panel" onclick="location.hash='#/blogger/${b.id}'">
+    <div class="bc-head">
+      <span class="bc-avatar">${icon("users", 17)}</span>
+      <div style="min-width:0">
+        <div class="bc-name">${esc(b.name)} <span class="provider-badge">${esc(b.platform)}</span></div>
+        <div class="bc-sub">${esc(b.douyin_id || "")} · ${esc(b.tags || "无标签")}</div>
+      </div>
+    </div>
+    <div class="bc-kpis">
+      <span>作品 <b>${b.video_count}</b></span>
+      <span>平均赞 <b>${fmt(Math.round(b.avg_likes))}</b></span>
+      <span>爆款 <b>${b.hit_count}</b></span>
+      <span>已分析 <b>${b.analyzed_count}</b></span>
+    </div>
+    <div class="bc-range">${b.earliest_date || "—"} ~ ${b.latest_date || "—"}</div>
+  </div>`;
+}
+$("#newBloggerBtn").addEventListener("click", openNewBlogger);
+function openNewBlogger() {
+  modal(`<div class="modal-head"><h3>新建博主</h3><button class="ctl" style="border:none;background:transparent" onclick="closeModal()">${icon("x", 15)}</button></div>
+    <div class="modal-body">
+      <label class="fld">名称 *</label><input id="nb-name" type="text" placeholder="如：博主昵称">
+      <label class="fld">抖音ID</label><input id="nb-did" type="text" placeholder="如：1234567890">
+      <label class="fld">主页链接</label><input id="nb-home" type="text" placeholder="https://www.douyin.com/user/...">
+      <label class="fld">标签（逗号分隔）</label><input id="nb-tags" type="text" placeholder="商业教练,男性成长">
+      <label class="fld">简介</label><textarea id="nb-bio" rows="3"></textarea>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" onclick="createBlogger()">创建</button></div>`);
+  $("#nb-name").focus();
+}
+async function createBlogger() {
+  const name = $("#nb-name").value.trim();
+  if (!name) return toast("请输入名称");
+  await api("/bloggers", { method: "POST", body: JSON.stringify({
+    name, platform: "抖音", douyin_id: $("#nb-did").value.trim(),
+    homepage_url: $("#nb-home").value.trim(), tags: $("#nb-tags").value.trim(),
+    bio: $("#nb-bio").value.trim() }) });
+  closeModal(); toast("已创建"); render();
+}
+
+/* ============================================================
+   Blogger detail
+   ============================================================ */
+let bState = { bid: null, q: "", kind: "", analyzed: "", sort: "upload_desc", data: null };
+async function renderBlogger(bid) {
+  const id = parseInt(bid);
+  if (bState.bid !== id) bState = { bid: id, q: "", kind: "", analyzed: "", sort: "upload_desc", data: null };
+  const b = await api("/bloggers/" + id);
+  const vs = await api(`/bloggers/${id}/videos?q=${encodeURIComponent(bState.q)}&kind=${bState.kind}&analyzed=${bState.analyzed}&sort=${bState.sort}`);
+  const s = b.stats;
+  $("#main").innerHTML = `
+    <div class="crumbs">${icon("chevronL", 13)} <a href="#/">全部博主</a> / <span>${esc(b.name)}</span></div>
+    <div class="panel">
+      <div class="detail-head">
+        <div class="model-ident">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span class="bc-avatar" style="width:30px;height:30px">${icon("users", 15)}</span>
+            <h2>${esc(b.name)} <span class="provider-badge">${esc(b.platform)}</span></h2>
+          </div>
+          <div class="bc-sub" style="margin-top:4px">
+            ${esc(b.douyin_id || "—")}
+            ${b.homepage_url ? ` · <a href="${esc(b.homepage_url)}" target="_blank">主页 ${icon("external", 11)}</a>` : ""}
+            · 标签：${esc(b.tags || "—")}
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn" onclick="openEditBlogger(${b.id})">${icon("edit", 14)} 编辑</button>
+          <button class="btn" onclick="doExport('json', ${b.id})">${icon("download", 14)} JSON</button>
+          <button class="btn" onclick="doExport('csv', ${b.id})">${icon("download", 14)} CSV</button>
+          <button class="btn" onclick="openAddVideo(${b.id})">${icon("plus", 14)} 新增视频</button>
+          <button class="btn danger" onclick="delBlogger(${b.id})">${icon("trash", 14)} 删除</button>
+        </div>
+      </div>
+      ${b.bio ? `<div class="bio-text"><div class="k">简介</div>${esc(b.bio)}</div>` : ""}
+      ${b.notes ? `<div class="bio-text" style="padding-top:0"><div class="k">备注</div>${esc(b.notes)}</div>` : ""}
+      <div class="detail-meta-grid">
+        ${dmeta("作品总数", s.video_count, "含图文")}
+        ${dmeta("视频", s.video_kind_count, "含字幕 " + s.subtitle_count)}
+        ${dmeta("图文", s.note_count, "无语音跳过")}
+        ${dmeta("已分析", s.analyzed_count)}
+        ${dmeta("平均点赞", fmt(Math.round(s.avg_likes)))}
+        ${dmeta("最高点赞", fmt(s.max_likes))}
+        ${dmeta("爆款(≥1万)", s.hit_count)}
+        ${dmeta("时间跨度", (s.earliest_date || "—") + " ~ " + (s.latest_date || "—"), s.days + " 天")}
+      </div>
+    </div>
+    <div class="panel">
+      <div class="table-toolbar">
+        <input class="search-input" id="bv-q" placeholder="搜索标题 / 备注…" value="${esc(bState.q)}">
+        <div class="seg-group" role="tablist">
+          <button class="seg ${bState.kind === "" ? "active" : ""}" data-k="">全部</button>
+          <button class="seg ${bState.kind === "视频" ? "active" : ""}" data-k="视频">${icon("film", 13)} 视频</button>
+          <button class="seg ${bState.kind === "图文" ? "active" : ""}" data-k="图文">${icon("file", 13)} 图文</button>
+        </div>
+        <div class="seg-group" role="tablist">
+          <button class="seg ${bState.analyzed === "" ? "active" : ""}" data-a="">全部</button>
+          <button class="seg ${bState.analyzed === "1" ? "active" : ""}" data-a="1">已分析</button>
+          <button class="seg ${bState.analyzed === "0" ? "active" : ""}" data-a="0">未分析</button>
+        </div>
+        <select class="ctl" id="bv-sort">
+          <option value="upload_desc" ${bState.sort === "upload_desc" ? "selected" : ""}>按日期 ↓</option>
+          <option value="upload_asc" ${bState.sort === "upload_asc" ? "selected" : ""}>按日期 ↑</option>
+          <option value="like_desc" ${bState.sort === "like_desc" ? "selected" : ""}>按点赞 ↓</option>
+          <option value="seq_asc" ${bState.sort === "seq_asc" ? "selected" : ""}>按采集序号</option>
+        </select>
+        <div style="flex:1"></div>
+        <span class="last-updated">共 ${vs.total} 条</span>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr>
+            <th>#</th><th>类型</th><th>标题</th><th>日期</th><th class="rt">时长</th>
+            <th class="rt">赞</th><th class="rt">评</th><th class="rt">转</th><th class="rt">藏</th><th>状态</th><th></th>
+          </tr></thead>
+          <tbody>
+          ${vs.items.map(v => `
+            <tr onclick="location.hash='#/video/${v.id}'">
+              <td class="seq-cell">${v.seq ?? "—"}</td>
+              <td>${v.kind === "图文" ? `<span class="provider-badge">图文</span>` : `<span class="provider-badge">视频</span>`}</td>
+              <td style="max-width:360px"><span class="title-cell truncate">${esc(v.title || "(无标题)")}</span>${v.notes ? `<div class="vcell truncate">${esc(String(v.notes).slice(0, 60))}</div>` : ""}</td>
+              <td class="vcell mono">${fmtDate(v.upload_date)}</td>
+              <td class="rt num-cell">${v.duration ? v.duration : "—"}</td>
+              <td class="rt num-cell">${fmt(v.like_count)}</td>
+              <td class="rt num-cell">${fmt(v.comment_count)}</td>
+              <td class="rt num-cell">${fmt(v.repost_count)}</td>
+              <td class="rt num-cell">${fmt(v.save_count)}</td>
+              <td>${v.has_analysis ? `<span class="dot ok"></span><span class="vcell">已分析</span>` : (v.status === "empty" ? `<span class="dot amber"></span><span class="vcell">无语音</span>` : `<span class="dot faint"></span><span class="vcell">未分析</span>`)} ${v.credibility ? `<span class="provider-badge">${esc(v.credibility.slice(0, 6))}</span>` : ""}</td>
+              <td><button class="btn mini" title="下载${v.kind === "图文" ? "图片" : "视频"}" onclick="event.stopPropagation();startDownload(${v.id}, this)">${icon("download", 13)}</button></td>
+            </tr>`).join("") || `<tr><td colspan="11" style="padding:36px;text-align:center;color:var(--text-muted)">无匹配记录</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  $("#bv-q").addEventListener("input", e => { bState.q = e.target.value; debouncedReload(); });
+  document.querySelectorAll('[data-k]').forEach(b => b.addEventListener("click", () => { bState.kind = b.dataset.k; renderBlogger(id); }));
+  document.querySelectorAll('[data-a]').forEach(b => b.addEventListener("click", () => { bState.analyzed = b.dataset.a; renderBlogger(id); }));
+  $("#bv-sort").addEventListener("change", e => { bState.sort = e.target.value; renderBlogger(id); });
+  setStatus("ok", "正常");
+}
+function dmeta(k, v, s) {
+  return `<div class="detail-meta panel"><div class="k">${k}</div><div class="v">${esc(String(v))}</div>${s ? `<div class="s">${esc(s)}</div>` : ""}</div>`;
+}
+let _dr;
+function debouncedReload() { clearTimeout(_dr); _dr = setTimeout(reloadBlogger, 300); }
+async function reloadBlogger() { if (bState.bid) renderBlogger(bState.bid); }
+function openEditBlogger(id) {
+  let b = homeData.find(x => x.id === id);
+  const open = bb => {
+    modal(`<div class="modal-head"><h3>编辑博主</h3><button class="ctl" style="border:none;background:transparent" onclick="closeModal()">${icon("x", 15)}</button></div>
+    <div class="modal-body">
+      <label class="fld">名称</label><input id="eb-name" value="${esc(bb.name)}">
+      <label class="fld">抖音ID</label><input id="eb-did" value="${esc(bb.douyin_id || "")}">
+      <label class="fld">主页链接</label><input id="eb-home" value="${esc(bb.homepage_url || "")}">
+      <label class="fld">标签</label><input id="eb-tags" value="${esc(bb.tags || "")}">
+      <label class="fld">简介</label><textarea id="eb-bio" rows="3">${esc(bb.bio || "")}</textarea>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" onclick="saveBlogger(${bb.id})">保存</button></div>`);
+  };
+  if (b) return open(b);
+  api("/bloggers/" + id).then(open).catch(e => toast(e.message));
+}
+async function saveBlogger(id) {
+  await api("/bloggers/" + id, { method: "PUT", body: JSON.stringify({
+    name: $("#eb-name").value, douyin_id: $("#eb-did").value, homepage_url: $("#eb-home").value,
+    tags: $("#eb-tags").value, bio: $("#eb-bio").value }) });
+  closeModal(); toast("已保存"); render();
+}
+async function delBlogger(id) {
+  if (!confirm("确认删除该博主及其全部作品？此操作不可恢复")) return;
+  await api("/bloggers/" + id, { method: "DELETE" });
+  location.hash = "#/"; toast("已删除");
+}
+function openAddVideo(bid) {
+  modal(`<div class="modal-head"><h3>新增视频</h3><button class="ctl" style="border:none;background:transparent" onclick="closeModal()">${icon("x", 15)}</button></div>
+    <div class="modal-body">
+      <label class="fld">链接 *</label><input id="av-url" type="text" placeholder="https://www.douyin.com/video/...">
+      <div class="form-row">
+        <div><label class="fld">类型</label><select class="fld" id="av-kind"><option value="视频">视频</option><option value="图文">图文</option></select></div>
+        <div><label class="fld">发布日期</label><input id="av-date" type="text" placeholder="20260819"></div>
+      </div>
+      <label class="fld">标题</label><input id="av-title" type="text">
+      <label class="fld">字幕 / 原稿（可选）</label><textarea id="av-sub" rows="4"></textarea>
+      <div class="fld-hint">仅记录元信息；完整流程（提取字幕 + 分析）在对话中完成后再导入</div>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" onclick="addVideo(${bid})">添加</button></div>`);
+}
+async function addVideo(bid) {
+  const url = $("#av-url").value.trim();
+  if (!url) return toast("请输入链接");
+  await api(`/bloggers/${bid}/videos`, { method: "POST", body: JSON.stringify({
+    url, kind: $("#av-kind").value, title: $("#av-title").value.trim(),
+    upload_date: $("#av-date").value.trim(), subtitle: $("#av-sub").value }) });
+  closeModal(); toast("已添加"); reloadBlogger();
+}
+
+/* ============================================================
+   Video detail
+   ============================================================ */
+async function renderVideo(vid) {
+  const d = await api("/videos/" + vid);
+  window._cur = d;
+  const v = d.video, a = d.analysis;
+  const anaFields = [["summary", "内容摘要"], ["key_points", "核心观点"], ["advice", "可执行建议"],
+    ["industries", "适合的行业方向"], ["risks", "风险和可疑之处"], ["credibility", "可信度判断"], ["actionable", "值得执行/需谨慎"]];
+  $("#main").innerHTML = `
+    <div class="crumbs">${icon("chevronL", 13)} <a href="#/">全部博主</a> / <a href="#/blogger/${d.blogger.id}">${esc(d.blogger.name)}</a> / <span class="mono">#${v.seq ?? v.id}</span></div>
+    <div class="panel">
+      <div class="detail-head">
+        <div class="model-ident">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span class="bc-avatar" style="width:30px;height:30px">${v.kind === "图文" ? icon("file", 15) : icon("film", 15)}</span>
+            <h2>${esc(v.title || "(无标题)")}</h2>
+          </div>
+          <div class="bc-sub" style="margin-top:4px">
+            <a href="${esc(v.url)}" target="_blank">原链接 ${icon("external", 11)}</a>
+            · ID <span class="mono">${esc(v.video_id || "—")}</span>
+            · 采集序号 <span class="mono">${v.seq ?? "—"}</span>
+          </div>
+        </div>
+        <div class="actions">
+          ${d.prev_id ? `<button class="btn" onclick="location.hash='#/video/${d.prev_id}'">${icon("chevronL", 14)} 上一条</button>` : ""}
+          ${d.next_id ? `<button class="btn" onclick="location.hash='#/video/${d.next_id}'">下一条 ${icon("chevronR", 14)}</button>` : ""}
+          <button class="btn" onclick="startDownload(${v.id}, this)">${icon("download", 14)} 下载${v.kind === "图文" ? "图片" : "视频"}</button>
+          <button class="btn" onclick="openEditVideo(${v.id})">${icon("edit", 14)} 编辑</button>
+          <button class="btn danger" onclick="delVideo(${v.id})">${icon("trash", 14)} 删除</button>
+        </div>
+      </div>
+      <div class="detail-meta-grid">
+        ${dmeta("类型", v.kind, v.status === "empty" ? "无语音" : "")}
+        ${dmeta("发布日期", fmtDate(v.upload_date))}
+        ${dmeta("时长", v.duration ? v.duration + "s" : "—")}
+        ${dmeta("点赞", fmt(v.like_count), v.like_count >= 10000 ? "爆款" : "")}
+        ${dmeta("评论", fmt(v.comment_count))}
+        ${dmeta("转发", fmt(v.repost_count))}
+        ${dmeta("收藏", fmt(v.save_count))}
+        ${dmeta("字幕字数", v.subtitle_chars ? fmt(v.subtitle_chars) : "—")}
+      </div>
+      ${v.notes ? `<div class="bio-text"><div class="k">备注</div>${esc(v.notes)}</div>` : ""}
+    </div>
+    ${a ? `
+    <div class="panel">
+      <div class="fmt-bar">
+        <div class="seg-group" role="tablist">
+          ${anaFields.map(([k, label], i) => `<button class="seg ${i === 0 ? "active" : ""}" data-f="${k}" onclick="showAnalysis('${k}')">${label}</button>`).join("")}
+        </div>
+        <div style="flex:1"></div>
+        <button class="btn" onclick="copyText(window._cur.analysis.full_md)">${icon("copy", 14)} 复制全文</button>
+      </div>
+      <div class="sec-body" id="anaWrap"></div>
+    </div>` : `<div class="panel"><div class="empty">${icon("chart", 20)}<div>暂无分析内容</div></div></div>`}
+    ${v.subtitle ? `
+    <div class="panel">
+      <div class="raw-head">
+        <span class="title">${icon("file", 13)} 原始字幕 / 原稿 · <span class="num">${fmt(v.subtitle_chars)}</span> 字</span>
+        <button class="btn" onclick="copyText(window._cur.video.subtitle)">${icon("copy", 14)} 复制全文</button>
+      </div>
+      <div style="padding:14px 16px"><pre class="raw">${esc(v.subtitle)}</pre></div>
+    </div>` : ""}`;
+  if (a) showAnalysis("summary");
+  setStatus("ok", "正常");
+}
+const ANA_TITLES = {
+  summary: "内容摘要",
+  key_points: "核心观点",
+  advice: "可执行建议",
+  industries: "适合的行业或工作方向（归纳博主建议，非事实）",
+  risks: "风险和可疑之处",
+  credibility: "对博主可信度的判断",
+  actionable: "哪些建议值得执行 / 需谨慎",
+};
+function showAnalysis(f) {
+  const a = window._cur.analysis;
+  document.querySelectorAll("[data-f]").forEach(b => b.classList.toggle("active", b.dataset.f === f));
+  $("#anaWrap").textContent = a[f] || "（空）";
+  $("#anaWrap").className = "sec-body";
+}
+function openEditVideo(id) {
+  const v = window._cur.video;
+  modal(`<div class="modal-head"><h3>编辑视频</h3><button class="ctl" style="border:none;background:transparent" onclick="closeModal()">${icon("x", 15)}</button></div>
+    <div class="modal-body">
+      <label class="fld">标题</label><input id="ev-title" value="${esc(v.title || "")}">
+      <label class="fld">状态</label>
+      <select class="fld" id="ev-status">
+        <option value="ok" ${v.status === "ok" ? "selected" : ""}>正常</option>
+        <option value="empty" ${v.status === "empty" ? "selected" : ""}>无语音</option>
+        <option value="skip" ${v.status === "skip" ? "selected" : ""}>跳过</option>
+      </select>
+      <label class="fld">字幕 / 原稿（校对版）</label><textarea id="ev-sub" rows="5">${esc(v.subtitle || "")}</textarea>
+      <label class="fld">标签</label><input id="ev-tags" value="${esc(v.tags || "")}">
+      <label class="fld">备注</label><textarea id="ev-notes" rows="3">${esc(v.notes || "")}</textarea>
+    </div>
+    <div class="modal-foot"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" onclick="saveVideo(${v.id})">保存</button></div>`);
+}
+async function saveVideo(id) {
+  await api("/videos/" + id, { method: "PUT", body: JSON.stringify({
+    title: $("#ev-title").value, status: $("#ev-status").value,
+    tags: $("#ev-tags").value, notes: $("#ev-notes").value,
+    subtitle: $("#ev-sub").value }) });
+  closeModal(); toast("已保存"); render();
+}
+async function delVideo(id) {
+  const v = window._cur.video;
+  if (!confirm(`删除「${v.title || "该视频"}」？`)) return;
+  await api("/videos/" + id, { method: "DELETE" });
+  location.hash = `#/blogger/${window._cur.blogger.id}`;
+  toast("已删除");
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+</script>
+</body>
+</html>

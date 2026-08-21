@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+pywebview
+faster-whisper
+yt-dlp
+pydantic
+requests

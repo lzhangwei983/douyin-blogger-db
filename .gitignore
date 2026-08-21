@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Build artifacts
+build/
+dist/
+*.exe
+*.spec.bak
+
+# Data / local outputs
+*.db
+*.sqlite3
+cookies.txt
+*.mp4
+*.tsv
+.DS_Store
+Thumbs.db
+DouyinBlogDB-data/
+
+# Local data dir used by the app (lives outside the repo)
+D:/DouyinBlogDB/
