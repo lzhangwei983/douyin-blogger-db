@@ -1,0 +1,34 @@
+name: 侵权投诉 / Takedown Request
+description: 权利人投诉侵权内容的专用模板
+title: \"[Takedown] 请说明被投诉内容\"
+labels: [takedown]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请提供权属证明与具体定位，核实后 48h 内处理。详见 SECURITY.md。
+  - type: input
+    id: owner
+    attributes:
+      label: 权利人/代理人
+      placeholder: 姓名或机构
+    validations: { required: true }
+  - type: textarea
+    id: works
+    attributes:
+      label: 被投诉内容定位
+      description: 文件路径/链接/行号
+      placeholder: 例如 static/index.html:1486
+    validations: { required: true }
+  - type: textarea
+    id: proof
+    attributes:
+      label: 权属证明
+      description: 权属文件或授权链说明
+    validations: { required: true }
+  - type: dropdown
+    id: action
+    attributes:
+      label: 希望采取的措施
+      options: [删除, 更正, 补充署名]
+    validations: { required: true }

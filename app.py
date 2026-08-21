@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+# 免责声明：本文件仅供个人学习/研究/个人备份示例，禁止商用与再分发，使用者自负合规责任。详见 LICENSE / DISCLAIMER.md
 """抖音博主数据库 - FastAPI 后端 + SQLite"""
 import json, sqlite3, csv, io, re, sys, os, subprocess, time
 import urllib.request

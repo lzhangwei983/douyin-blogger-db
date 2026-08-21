@@ -1,3 +1,4 @@
+# 免责声明：本文件仅供个人学习/研究/个人备份示例，禁止商用与再分发，使用者自负合规责任。详见 LICENSE / DISCLAIMER.md
 """流水线 v5：下载 -> faster-whisper (CUDA int8, 批处理) 转写 -> 删除 mp4（只留字幕 txt）
 用法: python pipeline.py <TSV> <工作目录> --cookies <file> [--model small] [--batch 16]
   <工作目录>/mp4/    临时视频（转写后删除）
