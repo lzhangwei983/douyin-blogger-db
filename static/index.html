@@ -1069,7 +1069,6 @@ async function editDaily(date) {
   if (!d.content) { toast("未找到内容"); return; }
   modal(`<div class="modal-head"><h3>编辑 ${esc(date)} 日报</h3><button class="ctl" style="border:none;background:transparent" onclick="closeModal()">${icon("x", 15)}</button></div><div class="modal-body"><textarea id="dailyEditArea" style="width:100%;height:380px;font-family:var(--font-mono);font-size:12px;white-space:pre;overflow:auto">${esc(d.content)}</textarea></div><div class="modal-foot"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" onclick="saveDailyEdit('${esc(date)}')">保存</button></div>`);
 }
-}
 async function saveDailyEdit(date) {
   const content = document.getElementById("dailyEditArea").value;
   const r = await api(`/daily/${date}`, {method: "PUT", body: JSON.stringify({content})});
