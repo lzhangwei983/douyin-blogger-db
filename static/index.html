@@ -1007,9 +1007,11 @@ function renderDailyList() {
             <div style="font-size:13px;color:var(--text)">${r.topics.length} 个主题 · ${r.topics.reduce((s,t)=>s+t.items.length,0)} 条候选</div>
             <div class="daily-meta" style="padding-right:0">${r.topics.map(t=>`${esc(t.name)}(${t.items.length})`).join(" · ")}</div>
           </div>
-          <span class="btn">${icon("chevronR", 13)} 查看</span>
-        </div>
-      </div>`).join("") || `<div class="panel"><div class="empty">${icon("search", 20)}<div>暂无日报，等待每日 09:00 自动生成</div></div></div>`}`;
+      <button class="btn" onclick="event.stopPropagation(); editDaily('${esc(r.date)}')">${icon("edit", 12)} 编辑</button>
+      <button class="btn" onclick="event.stopPropagation(); deleteDaily('${esc(r.date)}')" style="color:#ef4444;border-color:rgba(239,68,68,0.3)">${icon("trash", 12)} 删除</button>
+      <span class="btn">${icon("chevronR", 13)} 查看</span>
+    </div>
+  </div>`).join("") || `<div class="panel"><div class="empty">${icon("search", 20)}<div>暂无日报，等待每日 09:00 自动生成</div></div></div>`}`;
   setStatus("ok", "正常");
 }
 
@@ -1022,6 +1024,8 @@ function renderDailyDate(date) {
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <span class="section-title">${esc(date)} 信息差日报</span>
         <span style="flex:1"></span>
+        <button class="btn" onclick="editDaily('${esc(date)}')">${icon("edit", 14)} 编辑</button>
+        <button class="btn" onclick="deleteDaily('${esc(date)}')" style="color:#ef4444;border-color:rgba(239,68,68,0.3)">${icon("trash", 14)} 删除</button>
         <button class="btn" onclick="exportDailyHTML('${esc(date)}')">${icon("download", 14)} 导出 HTML</button>
         <span class="last-updated">点击标题查看摘要与点评 · 共 ${rep.topics.length} 主题</span>
       </div>
@@ -1053,6 +1057,23 @@ async function exportDailyHTML(date) {
   } catch (e) {
     toast("❌ 导出失败：" + e);
   }
+}
+async function deleteDaily(date) {
+  if (!confirm(`删除 ${date} 的日报？此操作会删除该日期所有文件（md/candidates/字幕/摘要），不可恢复`)) return;
+  const r = await api(`/daily/${date}`, {method: "DELETE"});
+  if (r.ok) { toast("已删除"); _dailyCache.items = _dailyCache.items.filter(x=>x.date!==date); renderDailyList(); }
+  else toast("删除失败: " + (r.detail || "未知"));
+}
+async function editDaily(date) {
+  const d = await api(`/daily/${date}/raw`);
+  if (!d.content) { toast("未找到内容"); return; }
+  showModal(`<div class="modal-head">编辑 ${esc(date)} 日报</div><div class="modal-body"><textarea id="dailyEditArea" style="width:100%;height:380px;font-family:var(--font-mono);font-size:12px;white-space:pre;overflow:auto">${esc(d.content)}</textarea></div><div class="modal-foot"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" onclick="saveDailyEdit('${esc(date)}')">保存</button></div>`);
+}
+async function saveDailyEdit(date) {
+  const content = document.getElementById("dailyEditArea").value;
+  const r = await api(`/daily/${date}`, {method: "PUT", body: JSON.stringify({content})});
+  if (r.ok) { closeModal(); toast("已保存"); _dailyCache.items = []; location.hash="#/daily"; }
+  else toast("保存失败");
 }
 
 function renderDailyVideo(date, url) {
@@ -1364,8 +1385,10 @@ async function renderHome() {
         <span class="section-title">概览</span>
         <div style="flex:1"></div>
         <input class="search-input" id="homeSearch" placeholder="搜索博主 / 标签 / 抖音ID…" value="${esc(homeState.q)}" style="min-width:220px">
+        <button class="btn" onclick="checkVersion(true)">${icon("refresh", 12)} 检查更新</button>
       </div>
     </div>
+    <div id="updateBanner" style="display:none"></div>
     <div class="kpi-grid">
       <div class="metric-card panel em kpi-hero">
         <div class="metric-label">总收录博主</div>
@@ -1407,6 +1430,31 @@ async function renderHome() {
   s.addEventListener("input", e => { homeState.q = e.target.value; clearTimeout(_hs); _hs = setTimeout(renderHome, 200); });
   setStatus("ok", "正常");
   $("#lastUpdated").textContent = `${tot} 条作品 · ${ta} 已分析`;
+  checkVersion();
+}
+
+async function checkVersion(showToast=false) {
+  try {
+    const v = await api("/version");
+    const banner = document.getElementById("updateBanner");
+    if (!banner) return;
+    if (v.is_old) {
+      banner.style.display = "block";
+      banner.innerHTML = `<div class="panel" style="background:linear-gradient(135deg,rgba(239,68,68,0.12),rgba(245,158,11,0.08));border-color:rgba(239,68,68,0.25);padding:12px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:18px">🚀</span>
+        <div style="flex:1;min-width:180px;text-align:left">
+          <div style="font-weight:700;font-size:13px">发现新版本 v${esc(v.latest)}（当前 v${esc(v.current)}）</div>
+          <div style="font-size:11px;color:var(--text-muted)">点击更新可直接跳转至 GitHub Release 下载最新安装包</div>
+        </div>
+        <button class="btn primary" onclick="window.open('${esc(v.url)}','_blank')">${icon("download", 13)} 去更新</button>
+        <button class="btn" onclick="this.closest('#updateBanner').style.display='none'">${icon("x", 12)} 忽略</button>
+      </div>`;
+    } else if (showToast) {
+      toast("已是最新版本 v" + v.current);
+    }
+  } catch (e) {
+    if (showToast) toast("检查更新失败");
+  }
 }
 
 /* ============================================================

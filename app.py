@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # 免责声明：本文件仅供个人学习/研究/个人备份示例，禁止商用与再分发，使用者自负合规责任。详见 LICENSE / DISCLAIMER.md
 """抖音博主数据库 - FastAPI 后端 + SQLite"""
+__version__ = "1.0.2"
 import json, sqlite3, csv, io, re, sys, os, subprocess, time
 import urllib.request
 from datetime import datetime, date
@@ -397,6 +398,76 @@ def api_daily(limit: int = 1):
                     })
         out.append({"date": f.stem, "topics": topics})
     return {"items": out}
+
+@app.get("/api/daily/{date}/raw")
+def api_daily_raw(date: str):
+    import re
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        raise HTTPException(status_code=400, detail="Invalid date")
+    daily_dir = Path(r"D:/DouyinBlogDB/daily/report")
+    md = daily_dir / f"{date}.md"
+    if not md.exists():
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"content": md.read_text(encoding="utf-8")}
+
+@app.delete("/api/daily/{date}")
+def api_delete_daily(date: str):
+    import shutil, re
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        raise HTTPException(status_code=400, detail="Invalid date")
+    daily_dir = Path(r"D:/DouyinBlogDB/daily/report")
+    removed = []
+    for pat in [f"{date}.md", f"{date}_candidates.json", f"{date}_pending.json", f"{date}_summary.json"]:
+        p = daily_dir / pat
+        if p.exists():
+            p.unlink()
+            removed.append(pat)
+    # transcripts dir
+    tr = daily_dir / f"{date}_transcripts"
+    if tr.exists():
+        shutil.rmtree(tr)
+        removed.append(f"{date}_transcripts/")
+    exp = daily_dir / "exports" / f"每日信息差_{date}.html"
+    if exp.exists():
+        exp.unlink()
+        removed.append(exp.name)
+    if not removed:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True, "removed": removed}
+
+@app.put("/api/daily/{date}")
+async def api_update_daily(date: str, request: Request):
+    import re
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        raise HTTPException(status_code=400, detail="Invalid date")
+    body = await request.json()
+    content = body.get("content", "")
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="Empty content")
+    daily_dir = Path(r"D:/DouyinBlogDB/daily/report")
+    md_path = daily_dir / f"{date}.md"
+    md_path.write_text(content, encoding="utf-8")
+    return {"ok": True}
+
+@app.get("/api/version")
+def api_version():
+    cur = __version__
+    latest = cur
+    url = "https://github.com/lzhangwei983/douyin-blogger-db/releases/latest"
+    try:
+        req = urllib.request.Request("https://api.github.com/repos/lzhangwei983/douyin-blogger-db/releases/latest",
+                                      headers={"User-Agent": "douyin-blogger-db", "Accept": "application/vnd.github.v3+json"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+            latest = (data.get("tag_name") or cur).lstrip("v")
+            url = data.get("html_url") or url
+    except Exception:
+        pass
+    def parse(v): 
+        try: return [int(x) for x in re.findall(r"\d+", v)]
+        except: return [0]
+    is_old = parse(latest) > parse(cur)
+    return {"current": cur, "latest": latest, "is_old": is_old, "url": url}
 
 _DAILY_CSS = """
 body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;max-width:840px;margin:0 auto;padding:24px;color:#1c232c;background:#f7f7f8;line-height:1.7}
