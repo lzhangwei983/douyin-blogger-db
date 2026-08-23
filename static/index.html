@@ -1024,6 +1024,7 @@ function renderDailyDate(date) {
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <span class="section-title">${esc(date)} 信息差日报</span>
         <span style="flex:1"></span>
+        <button class="btn primary" onclick="dailyPush('${esc(date)}')">${icon("send", 14)} 推送飞书</button>
         <button class="btn" onclick="editDaily('${esc(date)}')">${icon("edit", 14)} 编辑</button>
         <button class="btn" onclick="deleteDaily('${esc(date)}')" style="color:#ef4444;border-color:rgba(239,68,68,0.3)">${icon("trash", 14)} 删除</button>
         <button class="btn" onclick="exportDailyHTML('${esc(date)}')">${icon("download", 14)} 导出 HTML</button>
@@ -1058,6 +1059,19 @@ async function exportDailyHTML(date) {
     toast("❌ 导出失败：" + e);
   }
 }
+async function dailyPush(date) {
+  const btn = event.target.closest("button");
+  if (btn) { btn.disabled = true; }
+  toast("正在推送到飞书…");
+  try {
+    const r = await api("/daily/push", { method: "POST", body: JSON.stringify({ date }) });
+    toast(r.ok ? ("✅ " + r.msg) : ("❌ " + r.msg));
+  } catch (e) {
+    toast("❌ 推送失败：" + e);
+  } finally {
+    if (btn) { btn.disabled = false; }
+  }
+}
 async function deleteDaily(date) {
   if (!confirm(`删除 ${date} 的日报？此操作会删除该日期所有文件（md/candidates/字幕/摘要），不可恢复`)) return;
   const r = await api(`/daily/${date}`, {method: "DELETE"});
@@ -1067,8 +1081,22 @@ async function deleteDaily(date) {
 async function editDaily(date) {
   const d = await api(`/daily/${date}/raw`);
   if (!d.content) { toast("未找到内容"); return; }
-  modal(`<div class="modal-head"><h3>编辑 ${esc(date)} 日报</h3><button class="ctl" style="border:none;background:transparent" onclick="closeModal()">${icon("x", 15)}</button></div><div class="modal-body"><textarea id="dailyEditArea" style="width:100%;height:380px;font-family:var(--font-mono);font-size:12px;white-space:pre;overflow:auto">${esc(d.content)}</textarea></div><div class="modal-foot"><button class="btn" onclick="closeModal()">取消</button><button class="btn primary" onclick="saveDailyEdit('${esc(date)}')">保存</button></div>`);
+  const overlay = document.createElement('div');
+  overlay.id = 'dailyFullEdit';
+  overlay.style.cssText = 'position:fixed;inset:0;background:var(--bg,#0b0e11);z-index:1000;display:flex;flex-direction:column;';
+  overlay.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--card);"><span style="font-weight:700">编辑 ${esc(date)} 日报 — 全屏</span><span style="flex:1"></span><button class="btn" onclick="document.getElementById('dailyFullEdit').remove()">取消</button><button class="btn primary" onclick="saveDailyFullEdit('${esc(date)}')">保存</button></div><textarea id="dailyFullArea" style="flex:1;width:100%;padding:16px;font-family:var(--font-mono);font-size:13px;line-height:1.6;white-space:pre;overflow:auto;border:none;outline:none;resize:none;background:var(--bg);color:var(--fg);">${esc(d.content)}</textarea>`;
+  document.body.appendChild(overlay);
+  document.getElementById('dailyFullArea').focus();
 }
+async function saveDailyFullEdit(date) {
+  const content = document.getElementById('dailyFullArea').value;
+  const r = await api(`/daily/${date}`, {method:"PUT", body: JSON.stringify({content})});
+  if (r.ok) { document.getElementById('dailyFullEdit').remove(); toast("已保存"); _dailyCache.items = []; location.hash="#/daily"; }
+  else toast("保存失败");
+}
+function applyTopicDelete(){ /* deprecated */ }
+
+
 async function saveDailyEdit(date) {
   const content = document.getElementById("dailyEditArea").value;
   const r = await api(`/daily/${date}`, {method: "PUT", body: JSON.stringify({content})});
@@ -1338,6 +1366,30 @@ async function renderSettings() {
           <label style="font-weight:600;display:block;margin-bottom:4px">${k} <span class="last-updated" style="font-size:11px">${desc}</span></label>
           <input id="set_${k}" type="number" value="${cur(k, d)}" style="width:100%;box-sizing:border-box">
         </div>`).join("")}
+      <div style="margin-top:14px">
+        <label style="font-weight:600;display:block;margin-bottom:4px">飞书 Webhook <span class="last-updated" style="font-size:11px">用于自动推送每日信息差</span></label>
+        <input id="set_feishu" type="text" value="${esc(s.feishu_webhook || "")}" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/..." style="width:100%;box-sizing:border-box">
+      </div>
+      <div style="margin-top:14px">
+        <label style="font-weight:600;display:block;margin-bottom:4px">飞书签名密钥 <span class="last-updated" style="font-size:11px">选填，Webhook 开启签名校验时填写</span></label>
+        <input id="set_feishu_secret" type="text" value="${esc(s.feishu_secret || "")}" placeholder="机器人安全设置里的签名校验密钥" style="width:100%;box-sizing:border-box">
+      </div>
+      <div style="margin-top:18px;border-top:1px dashed var(--border);padding-top:14px">
+        <div class="section-title" style="font-size:13px">飞书自建应用推送（无自定义机器人时用）</div>
+        <div class="last-updated" style="margin:4px 0 8px">在 open.feishu.cn 建应用、开机器人能力，把应用添加进目标群；填下面三项即可推送。</div>
+        <div style="margin-top:10px">
+          <label style="font-weight:600;display:block;margin-bottom:4px">App ID</label>
+          <input id="set_feishu_app_id" type="text" value="${esc(s.feishu_app_id || "")}" placeholder="cli_xxxxxxxx" style="width:100%;box-sizing:border-box">
+        </div>
+        <div style="margin-top:10px">
+          <label style="font-weight:600;display:block;margin-bottom:4px">App Secret</label>
+          <input id="set_feishu_app_secret" type="text" value="${esc(s.feishu_app_secret || "")}" placeholder="应用凭证密钥" style="width:100%;box-sizing:border-box">
+        </div>
+        <div style="margin-top:10px">
+          <label style="font-weight:600;display:block;margin-bottom:4px">目标群 Chat ID <span class="last-updated" style="font-size:11px">机器人所在的群</span></label>
+          <input id="set_feishu_chat_id" type="text" value="${esc(s.feishu_chat_id || "")}" placeholder="oc_xxxxxxxx" style="width:100%;box-sizing:border-box">
+        </div>
+      </div>
       <div style="margin-top:16px;display:flex;gap:8px">
         <button class="btn" onclick="settingsSave()">${icon("save", 13)} 保存</button>
       </div>
@@ -1350,6 +1402,11 @@ async function settingsSave() {
     const v = parseInt($("#set_" + k).value, 10);
     if (!isNaN(v) && v > 0) body[k] = v;
   }
+  body.feishu_webhook = $("#set_feishu").value.trim();
+  body.feishu_secret = $("#set_feishu_secret").value.trim();
+  body.feishu_app_id = $("#set_feishu_app_id").value.trim();
+  body.feishu_app_secret = $("#set_feishu_app_secret").value.trim();
+  body.feishu_chat_id = $("#set_feishu_chat_id").value.trim();
   await api("/settings", { method: "PUT", body: JSON.stringify(body) });
   toast("设置已保存");
 }

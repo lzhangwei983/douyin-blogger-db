@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # 免责声明：本文件仅供个人学习/研究/个人备份示例，禁止商用与再分发，使用者自负合规责任。详见 LICENSE / DISCLAIMER.md
 """抖音博主数据库 - FastAPI 后端 + SQLite"""
-__version__ = "1.0.4"
+__version__ = "1.0.5"
 import json, sqlite3, csv, io, re, sys, os, subprocess, time
 import urllib.request
 from datetime import datetime, date
@@ -449,6 +449,22 @@ async def api_update_daily(date: str, request: Request):
     md_path.write_text(content, encoding="utf-8")
     return {"ok": True}
 
+@app.post("/api/daily/push")
+async def api_daily_push(request: Request):
+    import importlib.util
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    date = body.get("date")
+    spec = importlib.util.spec_from_file_location(
+        "feishu_push", r"D:/DouyinBlogDB/daily/feishu_push.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    ok, msg = mod.push(date=date)
+    return {"ok": ok, "msg": msg}
+
 @app.get("/api/version")
 def api_version():
     cur = __version__
@@ -634,7 +650,8 @@ def api_pipeline_status():
 
 @app.get("/api/settings")
 def api_settings():
-    cfg = {"whisper": {"num_workers": 4, "beam_size": 1,
+    cfg = {"feishu_webhook": "", "feishu_secret": "", "feishu_app_id": "", "feishu_app_secret": "",
+           "feishu_chat_id": "", "whisper": {"num_workers": 4, "beam_size": 1,
                        "concurrency": 1, "sleep_min": 1, "sleep_max": 3}}
     p = Path(r"D:/DouyinBlogDB/daily/config.json")
     if p.exists():
@@ -656,6 +673,9 @@ async def api_save_settings(request: Request):
             d = json.loads(p.read_text(encoding="utf-8"))
         except Exception:
             d = {}
+    for key in ("feishu_webhook", "feishu_secret", "feishu_app_id", "feishu_app_secret", "feishu_chat_id"):
+        if key in body:
+            d[key] = str(body[key]).strip()
     wh = d.setdefault("whisper", {})
     for k in ("num_workers", "beam_size", "concurrency", "sleep_min", "sleep_max"):
         if k in body and isinstance(body[k], (int, float)):
@@ -924,4 +944,5 @@ if __name__ == "__main__":
     import uvicorn
     print("抖音博主数据库已启动: http://127.0.0.1:8321")
     uvicorn.run(app, host="127.0.0.1", port=8321)
+
 
