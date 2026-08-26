@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # 免责声明：本文件仅供个人学习/研究/个人备份示例，禁止商用与再分发，使用者自负合规责任。详见 LICENSE / DISCLAIMER.md
 """抖音博主数据库 - FastAPI 后端 + SQLite"""
-__version__ = "1.0.5"
+__version__ = "1.0.6"
 import json, sqlite3, csv, io, re, sys, os, subprocess, time
 import urllib.request
 from datetime import datetime, date
@@ -485,6 +485,71 @@ def api_version():
     is_old = parse(latest) > parse(cur)
     return {"current": cur, "latest": latest, "is_old": is_old, "url": url}
 
+
+@app.post("/api/daily/generate")
+async def api_daily_generate(request: Request):
+    import re, subprocess
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    date = body.get("date") or ""
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
+        raise HTTPException(status_code=400, detail="Invalid date, use YYYY-MM-DD")
+    # 调用 daily_search 生成候选
+    try:
+        subprocess.run([sys.executable, r"D:/DouyinBlogDB/daily/daily_search.py", "--date", date], timeout=600, check=False)
+    except Exception as e:
+        return {"ok": False, "msg": str(e)}
+    return {"ok": True, "date": date}
+
+@app.post("/api/daily/{old_date}/rename")
+async def api_daily_rename(old_date: str, request: Request):
+    import re, shutil
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    new_date = body.get("new_date") or body.get("date") or ""
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", old_date) or not re.match(r"^\d{4}-\d{2}-\d{2}$", new_date):
+        raise HTTPException(status_code=400, detail="Invalid date")
+    daily_dir = Path(r"D:/DouyinBlogDB/daily/report")
+    # 重命名相关文件
+    renamed=[]
+    for pat in [f"{old_date}.md", f"{old_date}_candidates.json", f"{old_date}_pending.json", f"{old_date}_summary.json"]:
+        src = daily_dir / pat
+        if src.exists():
+            dst = daily_dir / pat.replace(old_date, new_date)
+            src.rename(dst)
+            renamed.append(pat)
+    # transcripts 目录
+    src_tr = daily_dir / f"{old_date}_transcripts"
+    if src_tr.exists():
+        dst_tr = daily_dir / f"{new_date}_transcripts"
+        src_tr.rename(dst_tr)
+        renamed.append(f"{old_date}_transcripts/")
+    # exports
+    exp_old = daily_dir / "exports" / f"每日信息差_{old_date}.html"
+    if exp_old.exists():
+        exp_new = daily_dir / "exports" / f"每日信息差_{new_date}.html"
+        exp_old.rename(exp_new)
+        renamed.append(exp_old.name)
+    # 同时更新 md 内的标题日期
+    md_new = daily_dir / f"{new_date}.md"
+    if md_new.exists():
+        try:
+            txt = md_new.read_text(encoding="utf-8")
+            txt = txt.replace(f"# AI 信息差日报 {old_date}", f"# AI 信息差日报 {new_date}")
+            md_new.write_text(txt, encoding="utf-8")
+        except Exception:
+            pass
+    if not renamed:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"ok": True, "renamed": renamed, "new_date": new_date}
+
+
 _DAILY_CSS = """
 body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;max-width:840px;margin:0 auto;padding:24px;color:#1c232c;background:#f7f7f8;line-height:1.7}
 h1{font-size:22px;border-bottom:2px solid #2f6fdb;padding-bottom:8px;margin-bottom:4px}
@@ -944,5 +1009,6 @@ if __name__ == "__main__":
     import uvicorn
     print("抖音博主数据库已启动: http://127.0.0.1:8321")
     uvicorn.run(app, host="127.0.0.1", port=8321)
+
 
 
