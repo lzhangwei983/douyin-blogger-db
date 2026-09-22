@@ -384,7 +384,8 @@ def api_daily(limit: int = 1):
             elif cur is not None and "💬" in line:
                 m2 = re.match(r"^\s*-\s*💬\s*(.*)$", line)
                 if cur["items"] and m2:
-                    cur["items"][-1]["summary"] = m2.group(1).strip()
+                    _s = m2.group(1).strip()
+                    cur["items"][-1]["summary"] = "" if _s == "（待agent审核）" else _s
             elif cur is not None and line.startswith("- ["):
                 m = re.match(r"- \[(.*?)\]\((.*?)\)\s*—\s*(.*)$", line)
                 if m:

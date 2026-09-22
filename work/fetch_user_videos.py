@@ -67,7 +67,7 @@ def fetch(url, limit, cookie_str, all_mode=False, outfile=None):
     sec_uid = m.group(1)
     if "ttwid" not in cookie_str:
         cookie_str += "; " + register_ttwid()
-    print(f"[Cookie] ttwid={'有' if 'ttwid' in cookie_str else '有' if 'ttwid' in cookie_str else '无'}  msToken={'有' if 'msToken' in cookie_str else '无'}")
+    print(f"[Cookie] ttwid={'有' if 'ttwid' in cookie_str else '无'}  msToken={'有' if 'msToken' in cookie_str else '无'}")
     base = ("https://www.douyin.com/aweme/v1/web/aweme/post/?device_platform=webapp&aid=6383"
             "&channel=channel_pc_web&sec_user_id=" + sec_uid + "&count=18&publish_video_strategy_type=2")
     cursor, collected = "0", []
@@ -137,7 +137,10 @@ def fetch(url, limit, cookie_str, all_mode=False, outfile=None):
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    url = args[0] if args else "https://v.douyin.com/o5P068OlKkc/"
+    if not args or args[0] in ("-h", "--help"):
+        print(__doc__)
+        sys.exit(0)
+    url = args[0]
     limit, all_mode, outfile, cookie = 3, False, None, None
     i = 1
     while i < len(args):

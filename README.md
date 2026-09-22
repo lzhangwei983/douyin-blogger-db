@@ -54,7 +54,7 @@
 
 ```bash
 git clone <your-fork-or-this-repo>
-cd douyin_blog_db
+cd douyin-blogger-db
 
 python -m venv .venv
 .venv\Scripts\activate        # Windows
