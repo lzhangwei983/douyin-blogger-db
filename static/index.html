@@ -1078,20 +1078,20 @@ async function dailyPush(date) {
   }
 }
 async function generateDaily(){
-  const d=document.getElementById('"'"'dailyNewDate'"'"').value;
-  if(!d){ toast('"'"'请选择日期'"'"'); return; }
-  toast('"'"'正在生成 '"'"'+d+'"'"'，约需1-2分钟...'"'"');
-  const r=await api('"'"'/daily/generate'"'"', {method:'"'"'POST'"'"', body: JSON.stringify({date:d})});
-  if(r.ok){ toast('"'"'已生成 '"'"'+d); _dailyCache.items=[]; renderDailyRoute('"'"'#/daily'"'"'); }
-  else toast('"'"'生成失败: '"'"'+(r.detail||r.msg||'"'"'未知'"'"'));
+  const d=document.getElementById('dailyNewDate').value;
+  if(!d){ toast('请选择日期'); return; }
+  toast('正在生成 '+d+'，约需1-2分钟...');
+  const r=await api('/daily/generate', {method:'POST', body: JSON.stringify({date:d})});
+  if(r.ok){ toast('已生成 '+d); _dailyCache.items=[]; renderDailyRoute('#/daily'); }
+  else toast('生成失败: '+(r.detail||r.msg||'未知'));
 }
 async function renameDaily(oldDate){
-  const nd=document.getElementById('"'"'dailyRenameDate'"'"').value;
-  if(!nd || nd===oldDate){ toast('"'"'请选择新日期'"'"'); return; }
+  const nd=document.getElementById('dailyRenameDate').value;
+  if(!nd || nd===oldDate){ toast('请选择新日期'); return; }
   if(!confirm(`将 ${oldDate} 改为 ${nd} ？`)) return;
-  const r=await api(`/daily/${oldDate}/rename`, {method:'"'"'POST'"'"', body: JSON.stringify({new_date: nd})});
-  if(r.ok){ toast('"'"'已改為 '"'"'+nd); _dailyCache.items=[]; location.hash='"'"'#/daily/'"'"'+nd; }
-  else toast('"'"'改名失败: '"'"'+(r.detail||'"'"'未知'"'"'));
+  const r=await api(`/daily/${oldDate}/rename`, {method:'POST', body: JSON.stringify({new_date: nd})});
+  if(r.ok){ toast('已改為 '+nd); _dailyCache.items=[]; location.hash='#/daily/'+nd; }
+  else toast('改名失败: '+(r.detail||'未知'));
 }
 async function deleteDaily(date) {
   if (!confirm(`删除 ${date} 的日报？此操作会删除该日期所有文件（md/candidates/字幕/摘要），不可恢复`)) return;

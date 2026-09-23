@@ -33,14 +33,23 @@ def cookies_from_file(path):
     return "; ".join(f"{k}={v}" for k, v in vals.items())
 
 def search_users(keyword, cookie_str):
+    if not keyword.strip():
+        return []
     base = ("https://www.douyin.com/aweme/v1/web/discover/search/"
             "?device_platform=webapp&aid=6383&channel=channel_pc_web&count=15"
             f"&keyword={urllib.parse.quote(keyword)}&offset=0&search_channel=aweme_user"
             "&search_source=switch_tab")
     req = urllib.request.Request(base, headers={
         "User-Agent": UA, "Referer": "https://www.douyin.com/", "Cookie": cookie_str})
-    body = urllib.request.urlopen(req, timeout=30).read()
-    d = json.loads(body.decode("utf-8", "replace"))
+    try:
+        body = urllib.request.urlopen(req, timeout=30).read()
+        if not body:
+            print("[错误] API 返回空响应")
+            return []
+        d = json.loads(body.decode("utf-8", "replace"))
+    except Exception as e:
+        print(f"[错误] 请求或解析失败: {e}")
+        return []
     if d.get("status_code") != 0:
         print(f"[错误] status_code={d.get('status_code')} {str(d.get('status_msg'))[:60]}")
         return []
@@ -57,12 +66,14 @@ def search_users(keyword, cookie_str):
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    kw = args[0] if args else ""
+    if not args or args[0] in ("-h", "--help"):
+        print(__doc__)
+        sys.exit(0)
+    kw = args[0]
     cookie = ""
     for i, a in enumerate(args):
         if a == "--cookies" and i + 1 < len(args):
             cookie = cookies_from_file(args[i + 1])
-    import urllib.parse
     for u in search_users(kw, cookie):
         print(f"{u['nickname']} | 粉丝 {u['followers']} | 作品 {u['aweme_count']} | {u['signature'][:40]}")
         print(f"  {u['url']}")
