@@ -5,10 +5,14 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+.release-venv/
+.release-package-venv/
+.build-venv/
 
 # Build artifacts
 build/
 dist/
+release/
 *.exe
 *.spec.bak
 
@@ -21,6 +25,3 @@ cookies.txt
 .DS_Store
 Thumbs.db
 DouyinBlogDB-data/
-
-# Local data dir used by the app (lives outside the repo)
-D:/DouyinBlogDB/

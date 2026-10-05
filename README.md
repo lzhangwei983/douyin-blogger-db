@@ -1,138 +1,88 @@
-# 抖音博主数据库 / Douyin Blogger Database
+# 抖音博主数据库 Douyin Blogger Database
 
-> ⚠️ **免责声明**：本项目仅供**个人学习 / 技术研究 / 个人内容备份**使用，禁止商业用途与再分发他人版权内容。使用即表示你同意遵守各平台服务条款与当地法律，并**自负一切风险与责任**。详见 [DISCLAIMER.md](./DISCLAIMER.md)。
+一个本地运行的桌面脚本工具：输入博主主页链接或已有视频链接，把公开作品资料和互动数据采集到本机 SQLite 数据库，再按需转写字幕、搜索和导出。采集结果默认留在本机。
 
-这是我平时用来备份关注博主视频的小工具——把抖音（也支持 B站/YouTube 等）的视频批量抓下来，用 `faster-whisper` 转成文字丢进 SQLite，慢慢检索。顺手用 `FastAPI + pywebview` 套了个桌面界面，还加了个「每日 AI 信息差」的浏览页，开源出来给需要的朋友参考。
+## 能做什么
 
-我为什么做这个：关注的博主多了，想有个本地库能按关键词搜字幕、看转写进度，不用每次去翻手机。能跑就行，代码不算漂亮，欢迎提 issue 一起改。
+- 在桌面界面粘贴抖音博主主页链接，自定义作品条数，以及可选的起始日期和结束日期，采集后自动入库。
+- 粘贴一条或多条抖音视频链接（每批最多 100 条），逐条读取标题、作者、发布时间、时长、点赞、评论、转发和收藏数据并自动入库；无效或重复链接会单独标记。
+- 查看、筛选、搜索、比较本地作品资料，并将可用数据导出。
+- 对已采集的视频按需下载音视频并在本机转成字幕。字幕模型首次使用时会从模型托管服务下载到本地缓存。
 
-> 本仓库为**公开版**：已移除飞书推送等私有集成，保留可复用的采集 / 转写 / 检索主流程。
+本版本不包含个人日报、信息差、飞书推送或 Jev 工作流。
 
-## ⚖️ 免责声明
+如果要让自己选择的 Agent 处理导出的字幕和作品资料，请先读 [Agent 数据协作指南](AGENT_GUIDE.md)。
 
-本项目仅供技术研究、学习与个人备份使用，请合法合规使用：
+## 快速开始
 
-- 请勿用于侵犯他人隐私、版权等合法权益
-- 请勿用于任何商业用途或有偿代下/二次分发
-- 请勿用于任何违法违规用途，自行遵守各平台 ToS 及相关法律法规
-- 因使用本项目产生的任何风险与责任，由使用者自行承担
-- 平台接口或风控变更导致功能失效，属正常技术风险
+### Windows：桌面版
 
-继续使用即视为你已阅读并同意本声明，详见 [DISCLAIMER.md](./DISCLAIMER.md) 与 [SECURITY.md](./SECURITY.md)。
+从 GitHub Releases 下载 `DouyinBlogDB-Windows-v1.1.0.zip`，解压后双击 `DouyinBlogDB.exe`。该版本不要求单独安装 Python。桌面窗口需要 Microsoft Edge WebView2 Runtime；Windows 11 和多数已更新的 Windows 10 已预装，缺少时软件会显示[官方安装说明](https://developer.microsoft.com/microsoft-edge/webview2/)。作品采集会优先使用已安装的 Chrome 或 Edge。
 
----
+首次转写需要联网下载字幕模型。若 Windows SmartScreen 显示提示，请先核对 Release 页面中的 SHA-256，再按系统提示确认来源。
 
-## 项目结构
+### Windows：运行源码
 
-```
-.
-├── app.py                 # FastAPI 后端 + REST API + 前端静态服务
-├── main.py                # 桌面启动器（pywebview 套壳，自带 exe 打包）
-├── DouyinBlogDB.spec      # PyInstaller 打包配置
-├── static/                # 前端页面（index.html 等）
-├── work/                  # 采集 / 转写流水线
-│   ├── pipeline.py          # 下载 + whisper 转写主流程
-│   ├── fetch_user_videos.py # 抓取博主视频列表 -> TSV
-│   ├── fetch_user_info.py   # 抓取博主资料
-│   └── import_to_db.py      # 把 TSV / 字幕导入 SQLite
-└── tests/                 # 接口冒烟测试
-```
+安装 Python 3.10 或更高版本，解压源码后双击 `start.bat`。首次运行会在项目目录创建 `.venv`，自动安装 Python 依赖和 Chromium 浏览器组件；准备过程需要网络和磁盘空间。以后再次双击会复用已安装的环境。
 
----
+### macOS：运行源码
 
-## 环境要求
+安装 Python 3.10 或更高版本，解压源码后双击 `start.command`。首次运行会准备 Python 依赖和 Chromium，然后打开桌面界面。当前 Release 只提供 Windows 可执行版；macOS 源码启动流程尚未在本项目发布环境实机验收。
 
-- Python 3.10+
-- **ffmpeg**：系统需安装 `ffmpeg` 并加入 PATH（Windows 也可放到 `C:\ffmpeg\bin\ffmpeg.exe`）。
-- **GPU（推荐）**：转写默认使用 CUDA。无 NVIDIA GPU 时，把 `work/pipeline.py` 里
-  `WhisperModel(..., device="cuda", ...)` 改为 `device="cpu"` 即可（速度较慢）。
-- 首次运行会自动下载 whisper 模型到 `D:/DouyinBlogDB/models`。
+也可以在终端运行 `./start.sh`。目前没有为 Linux 提供一键桌面启动包；Linux 的 pywebview 图形组件需按发行版安装。
 
----
+## 登录与采集
 
-## 安装
+第一次采集或登录失效时，在软件内打开抖音登录窗口并完成扫码。登录 Cookie 会保存在本机应用数据目录，不要上传或发给他人。登录完成后：
+
+1. 采集博主：粘贴个人主页链接，填写条数和可选日期范围，然后开始采集。
+2. 采集指定视频：粘贴一条或多条作品链接；每行可以放一条链接，也可以从包含链接的分享文字中粘贴。
+3. 查看任务进度与结果。失败项会保留原因，可在软件提示后重试；网络拒绝、登录失效或平台风控时，软件不会把失败结果当作成功入库。
+
+采集可用性会受平台接口、登录状态、网络和风控影响。该工具不保证平台端持续可用，也不会替你绕过验证码或访问限制。
+
+## 字幕和硬件
+
+字幕转写使用 `faster-whisper`。程序会先检测当前机器可用的 CUDA，再回退到 CPU；没有 NVIDIA 显卡、只有核显或使用 Apple 芯片时仍可使用 CPU 转写，无需用户手动选择 GPU。CPU 转写速度会较慢。CUDA 运行库若不可用，也会回退到 CPU。
+
+模型文件首次使用时需要联网下载，之后从本机缓存加载。模型缓存和数据库都可以通过 `DYDB_HOME` 环境变量放到自定义可写目录。
+
+## 本地数据位置
+
+- Windows：`%LOCALAPPDATA%\DouyinBlogDB`
+- macOS / Linux：`~/.local/share/DouyinBlogDB`
+- 自定义位置：设置环境变量 `DYDB_HOME`
+
+数据库、登录状态、任务进度、模型和字幕都留在本机。备份时请同时保护数据库与登录 Cookie；不要将 Cookie、数据库或个人采集结果提交到公开仓库。
+
+## 源码依赖
+
+依赖清单在 `requirements.txt`。Windows 和 macOS 启动脚本会自动创建隔离环境并安装依赖。直接运行源码时，可手动执行：
 
 ```bash
-git clone <your-fork-or-this-repo>
-cd douyin-blogger-db
-
 python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # macOS / Linux
-
-pip install -r requirements.txt
-```
-
----
-
-## 使用
-
-### 1. 桌面应用（推荐）
-
-```bash
+# Windows PowerShell: .venv\Scripts\python -m pip install -r requirements.txt
+# macOS/Linux:       .venv/bin/python -m pip install -r requirements.txt
 python main.py
 ```
 
-会在**你自己的电脑**上起一个本地 FastAPI 服务，并弹出桌面窗口（地址是 `http://127.0.0.1:<随机端口>`，`127.0.0.1` 就是“本机自己”，外人访问不到，随机端口只是为了避免和你电脑上已有程序冲突）。
+桌面采集和登录需要 Playwright 及 Chromium。启动脚本会准备 Chromium；手动安装时运行 `python -m playwright install chromium`。音视频解码使用 Python 包提供的本机能力，不依赖仓库内硬编码的 FFmpeg 路径。
 
-### 2. 仅启动 Web 后端
-
-```bash
-uvicorn app:app --host 127.0.0.1 --port 8321
-# 浏览器打开 http://127.0.0.1:8321
-```
-
-### 3. 采集 + 转写一个博主
+## 开发与验证
 
 ```bash
-# 抓取博主视频列表 -> work/<name>_videos.tsv
-python work/fetch_user_videos.py <博主主页URL> [--cookies cookies.txt]
-
-# 下载 + 转写（把 TSV 交给流水线）
-python work/pipeline.py work/<name>_videos.tsv work/outputs/<name> --cookies cookies.txt [--model small] [--batch 16]
-
-# 导入数据库
-python work/import_to_db.py work/outputs/<name>
+python -m pytest -q
+python main.py --smoke-test
 ```
 
-`--cookies` 可选：遇到「需要登录才能访问」时，从浏览器导出 `cookies.txt`（Netscape 格式）后传入。
-
-### 4. 前端功能
-
-- **概览 / 采集进度**：查看博主、视频总量与转写进度。
-- **转写设置**：实时调整 `batch_size / num_workers / beam_size / 间隔`，下次转写生效。
-- **每日信息差**：浏览与导出每日报告（报告由独立的每日脚本生成，数据目录 `D:/DouyinBlogDB/daily/report`）。
-
----
-
-## 数据目录
-
-本应用默认把所有数据放在 **`D:\DouyinBlogDB`**（Windows）：
-
-```
-D:/DouyinBlogDB/
-├── work/            # 采集中间产物（TSV、mp4 临时文件）
-├── outputs/         # 转写结果（字幕 txt）
-├── models/          # whisper 模型缓存
-└── daily/report/    # 每日信息差报告
-```
-
-想换路径时，修改 `app.py` 与 `work/pipeline.py` 里的 `D:/DouyinBlogDB` 相关常量即可。
-
----
-
-## 打包成 exe
-
-已提供 `DouyinBlogDB.spec`，用 PyInstaller 打包：
-
-```bash
-pip install pyinstaller
-pyinstaller DouyinBlogDB.spec
-# 产物在 dist/DouyinBlogDB.exe
-```
-
----
+`--smoke-test` 只检查本地应用启动、页面/API 和资源，不会验证抖音当前接口、真实 Cookie 登录、实际采集或字幕模型下载。
 
 ## 许可证
 
-MIT —— 随意使用、修改、再分发。
+从 v1.1.0 开始，本仓库当前版本采用 [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)。个人非商业使用、学习、研究和修改按许可证文本进行；任何商业用途须先取得版权所有者的单独书面授权。此版本是“公开源码、非商业授权”，不属于 OSI 定义的开放源代码许可证。
+
+历史版本 v1.0 至 v1.0.6 继续按各自发布时附带的许可证文本管理；这些版本的 `LICENSE` 含 MIT 正文和补充条款，具体范围请以对应 tag 的原文为准。新许可证不撤销任何人已根据旧版本许可证取得的权利。请按对应 tag 查看历史版本的 `LICENSE`。
+
+## 使用说明
+
+请仅采集你有权访问和处理的内容，并遵守当地法律及平台条款。作品和字幕的权利归相应权利人所有。本软件按“原样”提供，不承诺平台接口持续可用或转写结果准确；详细说明见 [DISCLAIMER.md](DISCLAIMER.md)。

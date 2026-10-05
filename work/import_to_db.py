@@ -28,7 +28,7 @@ import sys, re, csv, json, sqlite3
 from datetime import datetime
 from pathlib import Path
 
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stdout,"reconfigure"): sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 APP_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(APP_DIR))
@@ -72,16 +72,20 @@ def main():
     con.execute("PRAGMA foreign_keys = ON")
 
     slug = args["--slug"].strip()
-    row = con.execute("SELECT id FROM bloggers WHERE slug=?", (slug,)).fetchone()
+    row = con.execute("SELECT * FROM bloggers WHERE slug=?", (slug,)).fetchone()
     if row:
-        con.execute("DELETE FROM videos WHERE blogger_id=?", (row["id"],))
-        con.execute("DELETE FROM bloggers WHERE id=?", (row["id"],))
-        print(f"已删除旧数据(slug={slug})，重新导入")
-    cur = con.execute(
-        "INSERT INTO bloggers(slug,name,platform,douyin_id,homepage_url,bio,notes,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-        (slug, args["--name"], args.get("--platform", "抖音"), args.get("--douyin-id", ""),
-         args.get("--homepage", ""), args.get("--bio", ""), "", args.get("--tags", ""), now, now))
-    bid = cur.lastrowid
+        from storage import backup_database
+        backup_database(app.DB_PATH,'before-import')
+        bid=row['id'];manual=set(json.loads(row['manual_fields'] or '[]'))
+        mapping={'--name':'name','--platform':'platform','--douyin-id':'douyin_id','--homepage':'homepage_url','--tags':'tags','--bio':'bio'}
+        fields={col:args[key] for key,col in mapping.items() if key in args and col not in manual and (not row[col] or args.get('--refresh-content')=='1')}
+        fields['updated_at']=now
+        con.execute('UPDATE bloggers SET '+','.join(k+'=?' for k in fields)+' WHERE id=?',[*fields.values(),bid])
+        print(f'增量合并，保留旧作品和人工编辑(slug={slug})')
+    else:
+        cur=con.execute('INSERT INTO bloggers(slug,name,platform,douyin_id,homepage_url,bio,notes,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)',
+            (slug,args['--name'],args.get('--platform','抖音'),args.get('--douyin-id',''),args.get('--homepage',''),args.get('--bio',''),'',args.get('--tags',''),now,now))
+        bid=cur.lastrowid
 
     out = Path(args["--dir"])
     rows = list(csv.DictReader(open(args["--tsv"], encoding="utf-8"), delimiter="\t"))
@@ -116,14 +120,25 @@ def main():
             if ana_f.exists():
                 ana_md = ana_f.read_text(encoding="utf-8")
                 has_ana = 1
-        cur = con.execute(
-            """INSERT INTO videos(blogger_id,seq,video_id,url,kind,title,upload_date,duration,
-               like_count,comment_count,repost_count,save_count,status,subtitle,subtitle_chars,has_analysis,images,notes,tags,created_at,updated_at)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (bid, seq, vid_id, url, kind, title or None, upload, int(r.get("时长", 0) or 0),
-             likes, comments, int(r.get("转发", 0) or 0), int(r.get("收藏", 0) or 0),
-             "ok", subtitle or None, len(subtitle or ""), has_ana, images or None, "", "", now, now))
-        vid = cur.lastrowid
+        existing=con.execute('SELECT * FROM videos WHERE blogger_id=? AND (video_id=? OR url=?)',(bid,vid_id,url)).fetchone()
+        if existing:
+            vid=existing['id'];manual=set(json.loads(existing['manual_fields'] or '[]'))
+            refresh=args.get('--refresh-content')=='1'
+            if existing['has_analysis'] and not refresh:ana_md=None
+            fields={'url':url,'kind':kind,'title':title or existing['title'],'upload_date':upload or existing['upload_date'],
+                'duration':int(r.get('时长') or existing['duration'] or 0),'like_count':likes,'comment_count':comments,
+                'repost_count':int(r.get('转发') or 0),'save_count':int(r.get('收藏') or 0),'updated_at':now}
+            if images:fields['images']=images
+            if existing['title'] and not refresh:fields.pop('title',None)
+            if subtitle and 'subtitle' not in manual and (not existing['subtitle'] or refresh):fields.update(subtitle=subtitle,subtitle_chars=len(subtitle))
+            fields={k:v for k,v in fields.items() if k not in manual}
+            con.execute('UPDATE videos SET '+','.join(k+'=?' for k in fields)+' WHERE id=?',[*fields.values(),vid])
+            if ana_md:con.execute('UPDATE videos SET has_analysis=1 WHERE id=?',(vid,))
+        else:
+            cur=con.execute('INSERT INTO videos(blogger_id,seq,video_id,url,kind,title,upload_date,duration,like_count,comment_count,repost_count,save_count,status,subtitle,subtitle_chars,has_analysis,images,notes,tags,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                (bid,seq,vid_id,url,kind,title or None,upload,int(r.get('时长') or 0),likes,comments,int(r.get('转发') or 0),int(r.get('收藏') or 0),'ok',subtitle or None,len(subtitle or ''),has_ana,images or None,'','',now,now))
+            vid=cur.lastrowid
+
         if kind == "视频":
             n_video += 1
             if subtitle:
@@ -133,13 +148,16 @@ def main():
             vals = {f: sections.get(k, "") for k, f in FIELD_MAP.items()}
             con.execute(
                 """INSERT INTO analyses(video_id,full_md,summary,key_points,advice,industries,risks,credibility,actionable,parsed_at)
-                   VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                   VALUES(?,?,?,?,?,?,?,?,?,?)
+                   ON CONFLICT(video_id) DO UPDATE SET full_md=excluded.full_md,summary=excluded.summary,
+                   key_points=excluded.key_points,advice=excluded.advice,industries=excluded.industries,
+                   risks=excluded.risks,credibility=excluded.credibility,actionable=excluded.actionable,parsed_at=excluded.parsed_at""",
                 (vid, ana_md, vals["summary"], vals["key_points"], vals["advice"],
                  vals["industries"], vals["risks"], vals["credibility"], vals["actionable"], now))
             n_ana += 1
     con.commit()
     con.close()
-    print(f"导入完成: {args['--name']}(id={bid}), 视频 {n_video} 条(含字幕 {n_sub}), 分析 {n_ana} 篇")
+    print(f"增量导入完成: {args['--name']}(id={bid}), 本批视频 {n_video} 条(文件含字幕 {n_sub}), 本批写入分析 {n_ana} 篇；既有正文与人工整理默认保留")
 
 if __name__ == "__main__":
     main()

@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# 免责声明：本文件仅供个人学习/研究/个人备份示例，禁止商用与再分发，使用者自负合规责任。详见 LICENSE / DISCLAIMER.md
-"""抖音博主数据库 - FastAPI 后端 + SQLite"""
-__version__ = "1.0.6"
+"""Local Douyin creator/video collection, library, and metrics API."""
+__version__ = "1.1.0"
 import json, sqlite3, csv, io, re, sys, os, subprocess, time
 import urllib.request
+from urllib.parse import urlsplit
 from datetime import datetime, date
 from pathlib import Path
-from fastapi import FastAPI, HTTPException, Query, Body, Request
-from fastapi.responses import Response, FileResponse
+from fastapi import FastAPI, HTTPException, Query, Body, Request, UploadFile, File, Form
+from fastapi.responses import Response, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -18,32 +18,64 @@ if getattr(sys, "frozen", False):
 else:
     BASE = Path(__file__).resolve().parent
     STATIC_DIR = BASE / "static"
+
+_embedded_root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+sys.path.insert(0, str(_embedded_root / "core"))
+sys.path.insert(0, str(_embedded_root / "work"))
+from _paths import CODE_ROOT, CODE_CORE_DIR, CODE_WORK_DIR, APP_STATE_DIR, CONFIG_JSON, LEGACY_CONFIG_JSON, get_data_dir, get_python, read_public_config
+sys.path.insert(0, str(CODE_CORE_DIR))
+
 def _data_dir():
-    cands = [Path("D:/DouyinBlogDB")] if sys.platform == "win32" else []
-    cands.append(BASE)
-    for p in cands:
-        try:
-            p.mkdir(parents=True, exist_ok=True)
-            t = p / ".wtest"
-            t.write_text("x")
-            t.unlink()
-            return p
-        except OSError:
-            continue
-    return BASE
+    return get_data_dir()
+
 
 DATA_DIR = _data_dir()
+DATA_DIR.mkdir(parents=True,exist_ok=True)
+os.environ['DYDB_HOME']=str(DATA_DIR)
+from storage import write_json,read_json,resource_lock,backup_database
+from metrics_service import query_metrics, export_csv as export_metrics_csv, safe_csv_value
+import metrics_import_service as metrics_import
+
 DB_PATH = DATA_DIR / "douyin_blog.db"
 
 app = FastAPI(title="抖音博主数据库")
+
+
+@app.middleware("http")
+async def protect_local_api_from_cross_origin_writes(request: Request, call_next):
+    if request.url.path.startswith('/api/') and request.method in {'POST','PUT','PATCH','DELETE'}:
+        host=(request.url.hostname or '').lower()
+        if host not in {'localhost','127.0.0.1','::1'}:
+            return JSONResponse(status_code=403,content={'detail':'只允许从本机访问此接口'})
+        origin=request.headers.get('origin')
+        if origin:
+            parsed=urlsplit(origin)
+            origin_host=(parsed.hostname or '').lower()
+            expected_port=request.url.port or (443 if request.url.scheme=='https' else 80)
+            origin_port=parsed.port or (443 if parsed.scheme=='https' else 80)
+            if (parsed.scheme not in {'http','https'} or parsed.username or parsed.password
+                    or origin_host not in {'localhost','127.0.0.1','::1'}
+                    or origin_host!=host or origin_port!=expected_port):
+                return JSONResponse(status_code=403,content={'detail':'已拒绝来自其他网站的本机写入请求'})
+    return await call_next(request)
+
+
+@app.exception_handler(sqlite3.OperationalError)
+async def sqlite_operational_error(request: Request, exc: sqlite3.OperationalError):
+    message = str(exc).lower()
+    if "locked" in message or "busy" in message:
+        return JSONResponse(status_code=503, content={"detail": "数据库正在被另一个任务使用，请稍后重试"},
+                            headers={"Retry-After": "2"})
+    return JSONResponse(status_code=500, content={"detail": "本机数据库操作失败，请检查数据库文件和目录权限"})
 
 def now():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 def get_db():
-    con = sqlite3.connect(DB_PATH)
+    con = sqlite3.connect(DB_PATH, timeout=2.0)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
+    con.execute("PRAGMA busy_timeout = 2000")
     return con
 
 def init_db():
@@ -97,10 +129,14 @@ def init_db():
     CREATE INDEX IF NOT EXISTS idx_videos_blogger ON videos(blogger_id);
     CREATE INDEX IF NOT EXISTS idx_videos_upload ON videos(upload_date);
     """)
+    metrics_import.init_schema(con)
     # 迁移：旧库补充新列
     cols = {r[1] for r in con.execute("PRAGMA table_info(videos)")}
     if "images" not in cols:
         con.execute("ALTER TABLE videos ADD COLUMN images TEXT")
+    for table in ('bloggers','videos'):
+        columns={r[1] for r in con.execute('PRAGMA table_info('+table+')')}
+        if 'manual_fields' not in columns:con.execute("ALTER TABLE "+table+" ADD COLUMN manual_fields TEXT DEFAULT '[]'")
     con.commit()
     con.close()
 
@@ -184,7 +220,10 @@ def list_bloggers(q: str = ""):
 
 @app.post("/api/bloggers")
 def create_blogger(b: BloggerIn):
-    slug = b.slug.strip() or re.sub(r"[^a-zA-Z0-9_-]", "", b.name.lower())
+    if not b.name.strip():raise HTTPException(400,'名称不能为空')
+    import uuid
+    slug = b.slug.strip() or re.sub(r"[^a-zA-Z0-9_-]", "", b.name.lower()) or 'blogger-'+uuid.uuid4().hex[:12]
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',slug):raise HTTPException(400,'博主标识仅可使用字母、数字、下划线和连字符（最多64位）')
     con = get_db()
     try:
         cur = con.execute(
@@ -233,6 +272,13 @@ def update_blogger(bid: int, b: BloggerPatch):
     if not fields:
         con.close()
         return {"ok": True}
+    table="videos" if "vid" in locals() else "bloggers"
+    rid=vid if "vid" in locals() else bid
+    existing=con.execute('SELECT manual_fields FROM '+table+' WHERE id=?',(rid,)).fetchone()
+    if not existing:con.close();raise HTTPException(404,'记录不存在')
+    edited=set(json.loads(existing['manual_fields'] or '[]'))
+    edited.update(f.split('=')[0] for f in fields if f.split('=')[0]!='subtitle_chars')
+    fields.append('manual_fields=?');args.append(json.dumps(sorted(edited)))
     fields.append("updated_at=?")
     args.append(now())
     args.append(bid)
@@ -243,6 +289,7 @@ def update_blogger(bid: int, b: BloggerPatch):
 
 @app.delete("/api/bloggers/{bid}")
 def delete_blogger(bid: int):
+    backup_database(DB_PATH,"before-delete")
     con = get_db()
     con.execute("DELETE FROM bloggers WHERE id=?", (bid,))
     con.commit()
@@ -256,9 +303,9 @@ def list_videos(bid: int, q: str = "", kind: str = "", analyzed: str = "",
     con = get_db()
     where, args = ["v.blogger_id=?"], [bid]
     if q:
-        where.append("(v.title LIKE ? OR v.notes LIKE ? OR v.tags LIKE ?)")
+        where.append("(v.title LIKE ? OR v.notes LIKE ? OR v.tags LIKE ? OR v.subtitle LIKE ? OR v.id IN (SELECT video_id FROM analyses WHERE full_md LIKE ?))")
         like = f"%{q}%"
-        args += [like, like, like]
+        args += [like]*5
     if kind:
         where.append("v.kind=?")
         args.append(kind)
@@ -340,6 +387,13 @@ def update_video(vid: int, p: VideoPatch):
     if not fields:
         con.close()
         return {"ok": True}
+    table="videos" if "vid" in locals() else "bloggers"
+    rid=vid if "vid" in locals() else bid
+    existing=con.execute('SELECT manual_fields FROM '+table+' WHERE id=?',(rid,)).fetchone()
+    if not existing:con.close();raise HTTPException(404,'记录不存在')
+    edited=set(json.loads(existing['manual_fields'] or '[]'))
+    edited.update(f.split('=')[0] for f in fields if f.split('=')[0]!='subtitle_chars')
+    fields.append('manual_fields=?');args.append(json.dumps(sorted(edited)))
     fields.append("updated_at=?")
     args.append(now())
     args.append(vid)
@@ -350,6 +404,7 @@ def update_video(vid: int, p: VideoPatch):
 
 @app.delete("/api/videos/{vid}")
 def delete_video(vid: int):
+    backup_database(DB_PATH,"before-delete")
     con = get_db()
     con.execute("DELETE FROM videos WHERE id=?", (vid,))
     con.commit()
@@ -367,104 +422,16 @@ def get_analysis(vid: int):
     return dict(a)
 
 # ---------- export ----------
-@app.get("/api/daily")
-def api_daily(limit: int = 1):
-    daily_dir = Path(r"D:/DouyinBlogDB/daily/report")
-    if not daily_dir.exists():
-        return {"items": []}
-    files = sorted(daily_dir.glob("*.md"), reverse=True)[:limit]
-    out = []
-    for f in files:
-        text = f.read_text(encoding="utf-8")
-        topics, cur = [], None
-        for line in text.splitlines():
-            if line.startswith("## "):
-                cur = {"name": line[3:].strip(), "items": []}
-                topics.append(cur)
-            elif cur is not None and "💬" in line:
-                m2 = re.match(r"^\s*-\s*💬\s*(.*)$", line)
-                if cur["items"] and m2:
-                    _s = m2.group(1).strip()
-                    cur["items"][-1]["summary"] = "" if _s == "（待agent审核）" else _s
-            elif cur is not None and line.startswith("- ["):
-                m = re.match(r"- \[(.*?)\]\((.*?)\)\s*—\s*(.*)$", line)
-                if m:
-                    meta = m.group(3).split(" · ")
-                    cur["items"].append({
-                        "title": m.group(1), "url": m.group(2),
-                        "author": meta[0] if len(meta) > 0 else "",
-                        "platform": meta[1] if len(meta) > 1 else "",
-                        "hot": meta[2] if len(meta) > 2 else "",
-                        "date": meta[3] if len(meta) > 3 else "",
-                    })
-        out.append({"date": f.stem, "topics": topics})
-    return {"items": out}
 
-@app.get("/api/daily/{date}/raw")
-def api_daily_raw(date: str):
-    import re
-    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
-        raise HTTPException(status_code=400, detail="Invalid date")
-    daily_dir = Path(r"D:/DouyinBlogDB/daily/report")
-    md = daily_dir / f"{date}.md"
-    if not md.exists():
-        raise HTTPException(status_code=404, detail="Not found")
-    return {"content": md.read_text(encoding="utf-8")}
 
-@app.delete("/api/daily/{date}")
-def api_delete_daily(date: str):
-    import shutil, re
-    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
-        raise HTTPException(status_code=400, detail="Invalid date")
-    daily_dir = Path(r"D:/DouyinBlogDB/daily/report")
-    removed = []
-    for pat in [f"{date}.md", f"{date}_candidates.json", f"{date}_pending.json", f"{date}_summary.json"]:
-        p = daily_dir / pat
-        if p.exists():
-            p.unlink()
-            removed.append(pat)
-    # transcripts dir
-    tr = daily_dir / f"{date}_transcripts"
-    if tr.exists():
-        shutil.rmtree(tr)
-        removed.append(f"{date}_transcripts/")
-    exp = daily_dir / "exports" / f"每日信息差_{date}.html"
-    if exp.exists():
-        exp.unlink()
-        removed.append(exp.name)
-    if not removed:
-        raise HTTPException(status_code=404, detail="Not found")
-    return {"ok": True, "removed": removed}
 
-@app.put("/api/daily/{date}")
-async def api_update_daily(date: str, request: Request):
-    import re
-    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
-        raise HTTPException(status_code=400, detail="Invalid date")
-    body = await request.json()
-    content = body.get("content", "")
-    if not content.strip():
-        raise HTTPException(status_code=400, detail="Empty content")
-    daily_dir = Path(r"D:/DouyinBlogDB/daily/report")
-    md_path = daily_dir / f"{date}.md"
-    md_path.write_text(content, encoding="utf-8")
-    return {"ok": True}
 
-@app.post("/api/daily/push")
-async def api_daily_push(request: Request):
-    import importlib.util
-    body = {}
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    date = body.get("date")
-    spec = importlib.util.spec_from_file_location(
-        "feishu_push", r"D:/DouyinBlogDB/daily/feishu_push.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    ok, msg = mod.push(date=date)
-    return {"ok": ok, "msg": msg}
+
+
+
+
+
+
 
 @app.get("/api/version")
 def api_version():
@@ -480,161 +447,27 @@ def api_version():
             url = data.get("html_url") or url
     except Exception:
         pass
-    def parse(v): 
+    def parse(v):
         try: return [int(x) for x in re.findall(r"\d+", v)]
         except: return [0]
     is_old = parse(latest) > parse(cur)
     return {"current": cur, "latest": latest, "is_old": is_old, "url": url}
 
 
-@app.post("/api/daily/generate")
-async def api_daily_generate(request: Request):
-    import re, subprocess
-    body = {}
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    date = body.get("date") or ""
-    if not re.match(r"^\d{4}-\d{2}-\d{2}$", date):
-        raise HTTPException(status_code=400, detail="Invalid date, use YYYY-MM-DD")
-    # 调用 daily_search 生成候选
-    try:
-        subprocess.run([sys.executable, r"D:/DouyinBlogDB/daily/daily_search.py", "--date", date], timeout=600, check=False)
-    except Exception as e:
-        return {"ok": False, "msg": str(e)}
-    return {"ok": True, "date": date}
-
-@app.post("/api/daily/{old_date}/rename")
-async def api_daily_rename(old_date: str, request: Request):
-    import re, shutil
-    body = {}
-    try:
-        body = await request.json()
-    except Exception:
-        body = {}
-    new_date = body.get("new_date") or body.get("date") or ""
-    if not re.match(r"^\d{4}-\d{2}-\d{2}$", old_date) or not re.match(r"^\d{4}-\d{2}-\d{2}$", new_date):
-        raise HTTPException(status_code=400, detail="Invalid date")
-    daily_dir = Path(r"D:/DouyinBlogDB/daily/report")
-    # 重命名相关文件
-    renamed=[]
-    for pat in [f"{old_date}.md", f"{old_date}_candidates.json", f"{old_date}_pending.json", f"{old_date}_summary.json"]:
-        src = daily_dir / pat
-        if src.exists():
-            dst = daily_dir / pat.replace(old_date, new_date)
-            src.rename(dst)
-            renamed.append(pat)
-    # transcripts 目录
-    src_tr = daily_dir / f"{old_date}_transcripts"
-    if src_tr.exists():
-        dst_tr = daily_dir / f"{new_date}_transcripts"
-        src_tr.rename(dst_tr)
-        renamed.append(f"{old_date}_transcripts/")
-    # exports
-    exp_old = daily_dir / "exports" / f"每日信息差_{old_date}.html"
-    if exp_old.exists():
-        exp_new = daily_dir / "exports" / f"每日信息差_{new_date}.html"
-        exp_old.rename(exp_new)
-        renamed.append(exp_old.name)
-    # 同时更新 md 内的标题日期
-    md_new = daily_dir / f"{new_date}.md"
-    if md_new.exists():
-        try:
-            txt = md_new.read_text(encoding="utf-8")
-            txt = txt.replace(f"# AI 信息差日报 {old_date}", f"# AI 信息差日报 {new_date}")
-            md_new.write_text(txt, encoding="utf-8")
-        except Exception:
-            pass
-    if not renamed:
-        raise HTTPException(status_code=404, detail="Not found")
-    return {"ok": True, "renamed": renamed, "new_date": new_date}
 
 
-_DAILY_CSS = """
-body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;max-width:840px;margin:0 auto;padding:24px;color:#1c232c;background:#f7f7f8;line-height:1.7}
-h1{font-size:22px;border-bottom:2px solid #2f6fdb;padding-bottom:8px;margin-bottom:4px}
-.sub{color:#7d828c;font-size:12px;margin-bottom:8px}
-.topic{background:#fff;border:1px solid #e0e2e6;border-radius:10px;padding:14px 16px;margin:14px 0}
-.topic h2{font-size:16px;margin:0 0 10px;color:#2f6fdb}
-.item{border-top:1px solid #eee;padding:10px 0}
-.item:first-child{border-top:none}
-.t{font-weight:600;font-size:14px}
-.t a{color:#2f6fdb;text-decoration:none}
-.t a:hover{text-decoration:underline}
-.m{color:#7d828c;font-size:12px;margin:2px 0}
-.s{font-size:13px;color:#333;margin-top:5px;background:#f3f6fb;padding:8px 10px;border-radius:6px;border-left:3px solid #2f6fdb}
-footer{color:#999;font-size:12px;margin-top:20px;text-align:center}
-"""
 
-@app.get("/api/daily/export")
-def api_daily_export(date: str = ""):
-    daily_dir = Path(r"D:/DouyinBlogDB/daily/report")
-    if not date:
-        cands = sorted(daily_dir.glob("*_candidates.json"), reverse=True)
-        if cands:
-            date = cands[0].stem.replace("_candidates", "")
-    md = daily_dir / f"{date}.md"
-    if not md.exists():
-        return {"ok": False, "msg": f"未找到 {date}.md"}
-    topics, cur = [], None
-    for line in md.read_text(encoding="utf-8").splitlines():
-        if line.startswith("## "):
-            cur = {"name": line[3:].strip(), "items": []}
-            topics.append(cur)
-        elif cur is not None and "💬" in line:
-            m2 = re.match(r"^\s*-\s*💬\s*(.*)$", line)
-            if cur["items"] and m2:
-                cur["items"][-1]["summary"] = m2.group(1).strip()
-        elif cur is not None and line.startswith("- ["):
-            m = re.match(r"- \[(.*?)\]\((.*?)\)\s*—\s*(.*)$", line)
-            if m:
-                meta = m.group(3).split(" · ")
-                cur["items"].append({"title": m.group(1), "url": m.group(2),
-                                     "author": meta[0] if len(meta) > 0 else "",
-                                     "platform": meta[1] if len(meta) > 1 else "",
-                                     "hot": meta[2] if len(meta) > 2 else "",
-                                     "date": meta[3] if len(meta) > 3 else ""})
-    esc = lambda s: (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    body = ""
-    for t in topics:
-        body += f'<section class="topic"><h2>{esc(t["name"])}</h2>'
-        for it in t["items"]:
-            link = f'<a href="{esc(it["url"])}" target="_blank" rel="noopener">{esc(it["title"])}</a>' if it["url"] else esc(it["title"])
-            meta = " · ".join(x for x in [it["author"], it["platform"],
-                                          ("热度" + it["hot"] if it["hot"] else ""), it["date"]] if x)
-            body += f'<div class="item"><div class="t">{link}</div>'
-            if meta:
-                body += f'<div class="m">{esc(meta)}</div>'
-            if it.get("summary"):
-                body += f'<div class="s">{esc(it["summary"])}</div>'
-            body += "</div>"
-        body += "</section>"
-    html = (f'<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">'
-            f'<meta name="viewport" content="width=device-width,initial-scale=1">'
-            f'<title>每日 AI 信息差 · {esc(date)}</title><style>{_DAILY_CSS}</style></head>'
-            f'<body><h1>📡 每日 AI 信息差 · {esc(date)}</h1>'
-            f'<div class="sub">由「抖音博主数据库」生成 · 共 {len(topics)} 个主题</div>'
-            f'{body}<footer>抖音博主数据库 · 自动生成</footer></body></html>')
-    out_dir = daily_dir / "exports"
-    out_dir.mkdir(exist_ok=True)
-    out = out_dir / f"每日信息差_{date}.html"
-    out.write_text(html, encoding="utf-8")
-    return {"ok": True, "path": str(out), "date": date}
 
-def _proc_alive(pid):
-    try:
-        if os.name == "nt":
-            r = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"],
-                               capture_output=True, text=True,
-                               creationflags=0x08000000)
-            return str(pid) in r.stdout
-        return pid > 0 and Path(f"/proc/{pid}").exists()
-    except Exception:
-        return False
+
+
+
+
+def _proc_alive(pid, expected_script=None, created_at=None):
+    from process_identity import process_matches_pid
+    return process_matches_pid(pid, expected_script, created_at)
 
 def _tsv_total(slug):
-    tsv = Path(rf"D:/DouyinBlogDB/work/{slug}_videos.tsv")
+    tsv = (DATA_DIR / "work" / f"{slug}_videos.tsv")
     if not tsv.exists():
         return 0
     try:
@@ -645,229 +478,201 @@ def _tsv_total(slug):
 
 @app.get("/api/pipeline/status")
 def api_pipeline_status():
-    pipes = []
-    out_root = Path(r"D:/DouyinBlogDB/outputs")
-    if out_root.exists():
-        for d in sorted(out_root.iterdir()):
-            if not d.is_dir():
+    pipes=[]
+    output_root=DATA_DIR/"outputs"
+    if output_root.exists():
+        from process_identity import process_file_is_running
+        for folder in sorted(output_root.iterdir()):
+            if not folder.is_dir():
                 continue
-            pid_f = d / "pipeline.pid"
-            txt_dir = d / "txt"
-            if not pid_f.exists() and not txt_dir.exists():
+            pid_file=folder/"pipeline.pid"
+            text_dir=folder/"txt"
+            if not pid_file.exists() and not text_dir.exists():
                 continue
-            done = len(list(txt_dir.glob("*.txt"))) if txt_dir.exists() else 0
-            total = _tsv_total(d.name)
-            t_f = d / "todo.json"
-            skip_n = 0
-            if t_f.exists():
-                try:
-                    skip_n = len(json.loads(t_f.read_text(encoding="utf-8")).get("skip") or [])
-                except Exception:
-                    skip_n = 0
-            alive = False
-            if pid_f.exists():
-                try:
-                    alive = _proc_alive(int(pid_f.read_text().strip()))
-                except Exception:
-                    alive = False
-            log_lines = []
-            log = d / "pipeline.log"
-            if log.exists():
-                log_lines = log.read_text(encoding="utf-8", errors="replace").splitlines()[-6:]
-            pipes.append({"name": d.name, "done": done, "total": total, "skip": skip_n,
-                          "running": alive, "log_tail": log_lines})
-    # 信息差转写进度
-    daily = {"date": None, "transcribed": 0, "candidates": 0, "summarized": 0, "running": False}
-    daily_dir = Path(r"D:/DouyinBlogDB/daily/report")
-    if daily_dir.exists():
-        cands = sorted(daily_dir.glob("*_candidates.json"), reverse=True)
-        if cands:
-            date = cands[0].stem.replace("_candidates", "")
-            daily["date"] = date
-            try:
-                c = json.loads(cands[0].read_text(encoding="utf-8"))
-                daily["candidates"] = sum(len(t.get("items") or []) for t in c.get("topics") or [])
-            except Exception:
-                pass
-            tr_dir = daily_dir / f"{date}_transcripts"
-            if tr_dir.exists():
-                daily["transcribed"] = len(list(tr_dir.glob("*.txt")))
-            pend = daily_dir / f"{date}_pending.json"
-            if pend.exists():
-                try:
-                    daily["transcribed"] = len(json.loads(pend.read_text(encoding="utf-8")).get("items") or [])
-                except Exception:
-                    pass
-            sum_f = daily_dir / f"{date}_summary.json"
-            if sum_f.exists():
-                try:
-                    daily["summarized"] = len(json.loads(sum_f.read_text(encoding="utf-8")))
-                except Exception:
-                    pass
-    # 信息差转写是否在运行（daily_summary 写的 flag，10 分钟内新鲜算运行中）
-    flag = daily_dir / "transcribing.flag"
-    if flag.exists():
-        try:
-            fresh = (time.time() - flag.stat().st_mtime) < 600
-        except Exception:
-            fresh = False
-        daily["running"] = fresh
-    return {"pipes": pipes, "daily": daily}
+            done=len(list(text_dir.glob("*.txt"))) if text_dir.exists() else 0
+            total=_tsv_total(folder.name)
+            todo=read_json(folder/"todo.json",{}) or {}
+            running=process_file_is_running(pid_file,CODE_WORK_DIR/"pipeline.py") if pid_file.exists() else False
+            if pid_file.exists() and not running:
+                pid_file.unlink(missing_ok=True)
+            log_file=folder/"pipeline.log"
+            log_tail=log_file.read_text(encoding="utf-8",errors="replace").splitlines()[-6:] if log_file.exists() else []
+            pipes.append({"name":folder.name,"done":done,"total":total,
+                          "skip":len(todo.get("skip") or []),"running":running,"log_tail":log_tail})
+    return {"pipes":pipes}
+
+
 
 @app.get("/api/settings")
 def api_settings():
-    cfg = {"feishu_webhook": "", "feishu_secret": "", "feishu_app_id": "", "feishu_app_secret": "",
-           "feishu_chat_id": "", "whisper": {"num_workers": 4, "beam_size": 1,
-                       "concurrency": 1, "sleep_min": 1, "sleep_max": 3}}
-    p = Path(r"D:/DouyinBlogDB/daily/config.json")
-    if p.exists():
-        try:
-            d = json.loads(p.read_text(encoding="utf-8"))
-            cfg.update({k: v for k, v in d.items() if k in cfg and k != "whisper"})
-            cfg["whisper"].update(d.get("whisper") or {})
-        except Exception:
-            pass
-    return cfg
+    settings=read_public_config()
+    whisper={"num_workers":4,"beam_size":1,"concurrency":1,
+             "sleep_min":1,"sleep_max":3,"device":"auto",
+             **(settings.get("whisper") or {})}
+    return {"whisper":whisper,"browser":settings.get("browser") or {"mode":"background"}}
+
+
+
 
 @app.put("/api/settings")
 async def api_save_settings(request: Request):
-    body = await request.json()
-    p = Path(r"D:/DouyinBlogDB/daily/config.json")
-    d = {}
-    if p.exists():
+    body=await request.json()
+    current=read_public_config()
+    whisper=current.get("whisper") or {}
+    incoming=body.get("whisper") if isinstance(body.get("whisper"),dict) else body
+    for key in ("num_workers","beam_size","concurrency","sleep_min","sleep_max"):
+        value=incoming.get(key)
+        if isinstance(value,(int,float)) and not isinstance(value,bool):
+            whisper[key]=max(1,min(32,int(value)))
+    whisper["concurrency"]=min(2,int(whisper.get("concurrency",1)))
+    whisper["sleep_max"]=max(int(whisper.get("sleep_min",1)),int(whisper.get("sleep_max",3)))
+    if incoming.get("device") in ("auto","cpu","cuda"):
+        whisper["device"]=incoming["device"]
+    settings={"whisper":whisper}
+    mode=(body.get("browser") or {}).get("mode")
+    if mode in ("background","visible"):
+        settings["browser"]={"mode":mode}
+    if "proxy" in body:
+        settings["yt_proxy"]=str(body.get("proxy") or "").strip()
+    CONFIG_JSON.parent.mkdir(parents=True,exist_ok=True)
+    with resource_lock("public-config"):
+        write_json(CONFIG_JSON,settings)
+    return {"ok":True}
+
+
+
+
+# ---------- cookies: 状态 + 自助上传（P1-6 + 失效告警） ----------
+def _cookie_status(platform="douyin"):
+    if platform!="douyin":
+        raise ValueError("该公开版本仅支持抖音登录")
+    base=DATA_DIR/"work"
+    json_path=base/"douyin_cookies.json"
+    txt_path=base/"douyin_cookies.txt"
+    flag=read_json(base/"cookie_status.json",{}) or {}
+    expired=bool((flag.get("douyin") or {}).get("expired",False))
+    result={"platform":"douyin","exists":json_path.is_file() or txt_path.is_file(),
+            "expired":expired,"msg":"登录状态已失效，请重新登录抖音" if expired else ""}
+    for path in (json_path,txt_path):
+        if not path.is_file():
+            continue
         try:
-            d = json.loads(p.read_text(encoding="utf-8"))
-        except Exception:
-            d = {}
-    for key in ("feishu_webhook", "feishu_secret", "feishu_app_id", "feishu_app_secret", "feishu_chat_id"):
-        if key in body:
-            d[key] = str(body[key]).strip()
-    wh = d.setdefault("whisper", {})
-    for k in ("num_workers", "beam_size", "concurrency", "sleep_min", "sleep_max"):
-        if k in body and isinstance(body[k], (int, float)):
-            wh[k] = max(1, int(body[k]))
-    p.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
-    return {"ok": True, "saved": d}
+            result.update({"mtime":path.stat().st_mtime,"size":path.stat().st_size})
+            if path.suffix==".json":
+                cookies=json.loads(path.read_text(encoding="utf-8-sig"))
+                result["count"]=len(cookies) if isinstance(cookies,list) else 0
+        except (OSError,ValueError,TypeError):
+            result["expired"]=True
+            result["msg"]="登录状态文件无法读取，请重新登录抖音"
+        break
+    return result
+
+
+
+@app.get("/api/cookies/status")
+def api_cookies_status():
+    return {"douyin":_cookie_status("douyin")}
+
+
+
+@app.post("/api/cookies/upload")
+async def api_cookies_upload(platform: str=Query("douyin"),file: UploadFile=File(...)):
+    if platform.lower()!="douyin":
+        raise HTTPException(400,"此版本只支持抖音登录")
+    content=await file.read(1024*1024+1)
+    await file.close()
+    if len(content)>1024*1024:
+        raise HTTPException(400,"Cookie 文件不能超过1MB")
+    from _cookie_utils import netscape_to_playwright,playwright_to_netscape,load_playwright_cookies
+    from storage import atomic_text
+    base=DATA_DIR/"work"
+    base.mkdir(parents=True,exist_ok=True)
+    temp=base/("upload-"+__import__("uuid").uuid4().hex)
+    try:
+        raw=content.decode("utf-8-sig")
+        try:
+            payload=json.loads(raw)
+        except ValueError:
+            payload=None
+        if isinstance(payload,list):
+            write_json(temp.with_suffix(".json"),payload)
+        elif "Netscape HTTP Cookie File" in raw:
+            atomic_text(temp.with_suffix(".txt"),raw)
+            netscape_to_playwright(temp.with_suffix(".txt"),temp.with_suffix(".json"))
+        else:
+            raise ValueError("请上传Netscape TXT或Cookie JSON数组")
+        cookies=load_playwright_cookies(temp.with_suffix(".json"))
+        if not cookies:
+            raise ValueError("文件中没有可用的抖音Cookie；原登录状态未改变")
+        with resource_lock("cookie-douyin"):
+            write_json(base/"douyin_cookies.json",cookies)
+            playwright_to_netscape(cookies,base/"douyin_cookies.txt")
+            flags=read_json(base/"cookie_status.json",{}) or {}
+            flags.pop("douyin",None)
+            write_json(base/"cookie_status.json",flags)
+        return {"ok":True,"count":len(cookies)}
+    except (ValueError,UnicodeError) as error:
+        raise HTTPException(400,str(error)) from None
+    finally:
+        temp.with_suffix(".json").unlink(missing_ok=True)
+        temp.with_suffix(".txt").unlink(missing_ok=True)
+
+
+
+
+# ---------- platforms 开关（P1-6） ----------
+
+
+
+def _queue_blogger(blogger_id):
+    con=get_db()
+    try:row=con.execute('SELECT id,slug,name FROM bloggers WHERE id=?',(blogger_id,)).fetchone()
+    finally:con.close()
+    if not row:raise HTTPException(404,'博主不存在')
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,64}',row['slug']):raise HTTPException(409,'博主标识不安全，请先修正博主资料')
+    return dict(row)
 
 @app.get("/api/queue")
-def api_queue():
-    """转写队列：未转写条目 + 当前调控(todo.json)"""
-    out = []
-    tsv = Path(r"D:/DouyinBlogDB/work/lisziran_videos.tsv")
-    txt_dir = Path(r"D:/DouyinBlogDB/outputs/lisziran/txt")
+def api_queue(blogger_id: int = None):
+    """转写队列：按选中的博主读作品清单与字幕进度。"""
+    con=get_db()
+    try:bloggers=[dict(row) for row in con.execute('SELECT id,slug,name FROM bloggers ORDER BY created_at DESC')]
+    finally:con.close()
+    if blogger_id is None:return {'blogger_id':None,'blogger_name':'','bloggers':bloggers,'items':[],'todo':{'order':[],'skip':[]}}
+    blogger=_queue_blogger(blogger_id);slug=blogger['slug']
+    tsv=DATA_DIR/'work'/f'{slug}_videos.tsv';txt_dir=DATA_DIR/'outputs'/slug/'txt';out=[]
     if tsv.exists():
         try:
-            rows = list(csv.DictReader(open(tsv, encoding="utf-8"), delimiter="\t"))
-            for r in rows:
-                seq = int(r.get("序号") or 0)
-                url = r.get("链接", "").strip()
-                m = re.search(r"(?:/video/|/note/)(\d+)", url)
-                vid = m.group(1) if m else "unknown"
-                done = (txt_dir / f"{seq:02d}_video_{vid}_subtitle.txt").exists()
-                out.append({"seq": seq, "vid": vid, "title": r.get("标题", "") or "",
-                            "url": url, "done": done})
-        except Exception:
-            pass
-    todo = {"order": [], "skip": []}
-    tp = Path(r"D:/DouyinBlogDB/outputs/lisziran/todo.json")
-    if tp.exists():
-        try:
-            todo = json.loads(tp.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    return {"items": out, "todo": todo}
+            with tsv.open(encoding='utf-8',newline='') as handle:
+                for r in csv.DictReader(handle,delimiter='\t'):
+                    seq=int(r.get('序号') or 0);url=(r.get('链接') or '').strip()
+                    m=re.search(r'(?:/video/|/note/)(\d+)',url);vid=m.group(1) if m else 'unknown'
+                    out.append({'seq':seq,'vid':vid,'title':r.get('标题') or '', 'url':url,
+                                'done':(txt_dir/f'{seq:02d}_video_{vid}_subtitle.txt').is_file()})
+        except (OSError,ValueError,csv.Error):
+            raise HTTPException(500,'读取该博主作品清单失败，请检查 TSV 文件格式')
+    todo={'order':[],'skip':[]};tp=DATA_DIR/'outputs'/slug/'todo.json'
+    if tp.exists():todo=read_json(tp,todo) or todo
+    return {'blogger_id':blogger_id,'blogger_name':blogger['name'],'bloggers':bloggers,'items':out,'todo':todo}
 
 @app.put("/api/queue")
 async def api_save_queue(request: Request):
-    body = await request.json()
-    tp = Path(r"D:/DouyinBlogDB/outputs/lisziran/todo.json")
-    tp.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
-    return {"ok": True, "saved": body}
+    body=await request.json()
+    try:blogger_id=int(body.get('blogger_id'))
+    except (TypeError,ValueError):raise HTTPException(400,'请选择要调控的博主')
+    blogger=_queue_blogger(blogger_id)
+    try:d={k:list(dict.fromkeys(int(x) for x in body.get(k,[]))) for k in ('order','skip')}
+    except (TypeError,ValueError):raise HTTPException(400,'队列序号格式无效')
+    if any(x<1 for values in d.values() for x in values):raise HTTPException(400,'队列序号必须大于0')
+    with resource_lock('queue-'+str(blogger_id)):
+        write_json(DATA_DIR/'outputs'/blogger['slug']/'todo.json',d)
+    return {'ok':True,'blogger_id':blogger_id,'saved':d}
 
-@app.get("/api/schedule")
-def api_schedule():
-    """项目调度：顺序/启停 + 实时状态"""
-    p = Path(r"D:/DouyinBlogDB/daily/schedule.json")
-    items = []
-    completed = {}
-    failed = {}
-    if p.exists():
-        try:
-            d = json.loads(p.read_text(encoding="utf-8"))
-            items = d.get("items", [])
-            completed = d.get("completed", {})
-            failed = d.get("failed", {})
-        except Exception:
-            pass
-    if not items:
-        items = [{"id": "lisziran", "enabled": True, "state": "auto"},
-                 {"id": "daily", "enabled": True, "state": "auto"}]
-    # 运行时状态
-    def _skip_count(out_dir):
-        t = out_dir / "todo.json"
-        if t.exists():
-            try:
-                return len(json.loads(t.read_text(encoding="utf-8")).get("skip") or [])
-            except Exception:
-                return 0
-        return 0
-    def st_lisziran():
-        pid_f = Path(r"D:/DouyinBlogDB/outputs/lisziran/pipeline.pid")
-        running = False
-        if pid_f.exists():
-            try:
-                running = _proc_alive(int(pid_f.read_text().strip()))
-            except Exception:
-                running = False
-        txt = len(list(Path(r"D:/DouyinBlogDB/outputs/lisziran/txt").glob("*.txt")))
-        rows = _tsv_total("lisziran")
-        skip = _skip_count(Path(r"D:/DouyinBlogDB/outputs/lisziran"))
-        return {"running": running, "progress": f"{txt}/{rows}", "done": (txt + skip) >= rows,
-                "detail": f"{txt} 条字幕 / TSV {rows} 条（{skip} 条跳过）" if skip else f"{txt} 条字幕 / TSV {rows} 条"}
-    def st_daily():
-        rp = Path(r"D:/DouyinBlogDB/daily/report")
-        flag = rp / "transcribing.flag"
-        running = False
-        if flag.exists():
-            try:
-                running = (time.time() - flag.stat().st_mtime) < 600
-            except Exception:
-                running = False
-        cands = sorted(rp.glob("*_candidates.json"), reverse=True)
-        if not cands:
-            return {"running": running, "progress": "无任务", "done": True, "detail": "今日无候选"}
-        date = cands[0].stem.replace("_candidates", "")
-        tr = rp / f"{date}_transcripts"
-        n = len(list(tr.glob("*.txt"))) if tr.exists() else 0
-        try:
-            c = json.loads(cands[0].read_text(encoding="utf-8"))
-            tot = sum(len(t.get("items") or []) for t in c.get("topics") or [])
-        except Exception:
-            tot = n
-        return {"running": running, "progress": f"{n}/{tot}", "done": n >= tot,
-                "detail": f"{date} · 已转写 {n} / 候选 {tot}"}
-    names = {"lisziran": "李自然说 · 字幕转写", "daily": "每日信息差 · 候选转写"}
-    funcs = {"lisziran": st_lisziran, "daily": st_daily}
-    out = []
-    for it in items:
-        f = funcs.get(it.get("id"))
-        st = f() if f else {"running": False, "progress": "", "done": True, "detail": ""}
-        fid = it.get("id")
-        fmeta = failed.get(fid)
-        if fmeta and not st["running"] and not st["done"]:
-            st["detail"] = f"失败 {fmeta.get('count', 0)} 次，5 分钟后自动重试"
-        if completed.get(fid):
-            st["detail"] = st.get("detail") or "已完成，12h 内不自动重跑"
-        out.append({**it, "name": names.get(fid, fid), **st})
-    return {"items": out, "completed": completed, "failed": failed}
 
-@app.put("/api/schedule")
-async def api_save_schedule(request: Request):
-    body = await request.json()
-    p = Path(r"D:/DouyinBlogDB/daily/schedule.json")
-    d = {"items": body.get("items", []), "completed": body.get("completed", {})}
-    p.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding="utf-8")
-    return {"ok": True, "saved": d}
+
+
+
+
 
 @app.get("/api/export")
 def export(format: str = "json", blogger_id: int = None):
@@ -898,12 +703,12 @@ def export(format: str = "json", blogger_id: int = None):
         w.writerow(["博主", "抖音ID", "序号", "类型", "视频ID", "链接", "标题", "发布日期", "时长", "点赞", "评论", "转发", "收藏", "状态", "有无分析", "可信度判断", "字幕字数"])
         for bd in data:
             for v in bd["videos"]:
-                w.writerow([bd["name"], bd.get("douyin_id",""), v.get("seq",""), v.get("kind",""),
-                            v.get("video_id",""), v.get("url",""), v.get("title",""), v.get("upload_date",""),
+                w.writerow([safe_csv_value(bd["name"]), safe_csv_value(bd.get("douyin_id","")), v.get("seq",""), safe_csv_value(v.get("kind","")),
+                            safe_csv_value(v.get("video_id","")), safe_csv_value(v.get("url","")), safe_csv_value(v.get("title","")), safe_csv_value(v.get("upload_date","")),
                             v.get("duration",0), v.get("like_count",0), v.get("comment_count",0),
-                            v.get("repost_count",0), v.get("save_count",0), v.get("status",""),
+                            v.get("repost_count",0), v.get("save_count",0), safe_csv_value(v.get("status","")),
                             1 if v.get("has_analysis") else 0,
-                            (v.get("analysis") or {}).get("credibility","")[:200] if v.get("analysis") else "",
+                            safe_csv_value((v.get("analysis") or {}).get("credibility","")[:200] if v.get("analysis") else ""),
                             v.get("subtitle_chars",0)])
         fname = f"douyin_blog_export_{date.today().isoformat()}.csv"
         return Response("\ufeff" + buf.getvalue(), media_type="text/csv; charset=utf-8",
@@ -915,7 +720,6 @@ def export(format: str = "json", blogger_id: int = None):
 
 # ---------- download ----------
 import threading
-import yt_dlp
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 DOWNLOAD_DIR = DATA_DIR / "downloads"
@@ -924,10 +728,10 @@ _tasks = {}
 _tid = 0
 
 def find_cookie():
-    for c in (DATA_DIR / "douyin_cookies.txt", BASE / "douyin_cookies.txt", BASE / "work" / "douyin_cookies.txt"):
-        if c.exists():
-            return str(c)
+    for p in (DATA_DIR/'work/douyin_cookies.txt',DATA_DIR/'douyin_cookies.txt',BASE/'douyin_cookies.txt',BASE/'work/douyin_cookies.txt'):
+        if p.exists() and p.stat().st_size>0:return str(p)
     return None
+
 
 @app.get("/api/videos/{vid}/download")
 def download_video(vid: int):
@@ -983,6 +787,7 @@ def download_video(vid: int):
             "format": "best[height<=720]/best",
         }
         try:
+            import yt_dlp
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(r["url"], download=True)
             f = ydl.prepare_filename(info)
@@ -1003,13 +808,181 @@ def task_status(tid: int):
         raise HTTPException(404, "任务不存在")
     return t
 
+# ---------- profile collection ----------
+@app.post('/api/collection')
+def api_collection_start(payload: dict=Body(...)):
+    import collection_service as service
+    service.BASE_DIR=DATA_DIR
+    service.APP_STATE_DIR=APP_STATE_DIR
+    try:return service.start(payload.get('url'),payload.get('limit',50),payload.get('date_from'),payload.get('date_to'))
+    except service.RangeConflictError as error:raise HTTPException(409,str(error))
+    except service.CollectionError as error:raise HTTPException(400,str(error))
+    except OSError:raise HTTPException(500,'无法保存采集任务，请检查数据目录权限')
+
+@app.get('/api/collection/jobs/{tid}')
+def api_collection_status(tid: str):
+    import collection_service as service
+    service.BASE_DIR=DATA_DIR
+    service.APP_STATE_DIR=APP_STATE_DIR
+    try:
+        from task_store import get
+        task=get(tid)
+        if task and task['kind']=='video_collect':
+            import video_collection_service
+            return video_collection_service.status(tid)
+        return service.status(tid)
+    except (FileNotFoundError,service.CollectionError):raise HTTPException(404,'采集任务不存在')
+
+@app.post('/api/collection/login')
+def api_collection_login():
+    import collection_service as service
+    service.BASE_DIR=DATA_DIR
+    service.APP_STATE_DIR=APP_STATE_DIR
+    try:return service.start_login()
+    except service.CollectionError as error:raise HTTPException(400,str(error))
+    except OSError:raise HTTPException(500,'登录任务无法保存，请检查数据目录权限')
+
 # ---------- static ----------
+@app.post('/api/collection/videos')
+def api_video_collection(payload: dict=Body(...)):
+    import collection_service as shared
+    import video_collection_service as service
+    shared.BASE_DIR=DATA_DIR;shared.APP_STATE_DIR=APP_STATE_DIR
+    try:return service.start(payload.get('urls'))
+    except service.CollectionError as error:raise HTTPException(400,str(error))
+    except OSError:raise HTTPException(500,'视频采集任务无法保存，请检查数据目录权限')
+
+@app.post('/api/collection/videos/{tid}/retry')
+def api_video_collection_retry(tid: str):
+    import collection_service as shared
+    import video_collection_service as service
+    shared.BASE_DIR=DATA_DIR;shared.APP_STATE_DIR=APP_STATE_DIR
+    try:return service.retry(tid)
+    except FileNotFoundError:raise HTTPException(404,'视频采集任务不存在')
+    except service.CollectionError as error:raise HTTPException(400,str(error))
+
+
+
+
+
+
+
+
+@app.get('/api/search')
+def api_search(q: str='',limit: int=30):
+    q=q.strip()[:300]
+    if not q:return {'items':[],'total':0}
+    con=get_db();like='%'+q.replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%'
+    where="(v.title LIKE ? ESCAPE '\\' OR v.subtitle LIKE ? ESCAPE '\\' OR v.notes LIKE ? ESCAPE '\\' OR a.full_md LIKE ? ESCAPE '\\')"
+    rows=con.execute('SELECT v.id,v.title,v.subtitle,v.notes,v.upload_date,b.name blogger,a.full_md FROM videos v JOIN bloggers b ON b.id=v.blogger_id LEFT JOIN analyses a ON a.video_id=v.id WHERE '+where+' ORDER BY v.upload_date DESC LIMIT ?',[like]*4+[max(1,min(limit,100))]).fetchall()
+    total=con.execute('SELECT COUNT(*) FROM videos v LEFT JOIN analyses a ON a.video_id=v.id WHERE '+where,[like]*4).fetchone()[0];con.close()
+    out=[]
+    for r in rows:
+        matches=[]
+        for key,label in [('title','标题'),('subtitle','字幕'),('notes','备注'),('full_md','分析')]:
+            text=r[key] or '';idx=text.lower().find(q.lower())
+            if idx>=0:matches.append({'source':label,'snippet':text[max(0,idx-65):idx+len(q)+160]})
+        out.append({'id':r['id'],'title':r['title'],'blogger':r['blogger'],'date':r['upload_date'],'matches':matches})
+    return {'items':out,'total':total}
+
+@app.get('/api/metrics/imports')
+def api_metrics_imports():
+    con=get_db()
+    try:return metrics_import.list_batches(con)
+    finally:con.close()
+
+@app.post('/api/metrics/import/preview')
+async def api_metrics_import_preview(file: UploadFile=File(...),source_name: str=Form('')):
+    try:
+        content=await file.read(metrics_import.MAX_FILE_BYTES+1)
+        con=get_db()
+        try:return metrics_import.create_preview(con,content,file.filename or '',source_name)
+        finally:con.close()
+    except metrics_import.DuplicateImportError as e:
+        raise HTTPException(409,detail={'message':str(e),'batch_id':e.batch_id})
+    except metrics_import.ImportErrorDetail as e:
+        raise HTTPException(400,str(e))
+    finally:
+        await file.close()
+
+@app.post('/api/metrics/import/confirm')
+def api_metrics_import_confirm(payload: dict=Body(...)):
+    preview_id=str(payload.get('preview_id') or '').strip()
+    if len(preview_id)>100:raise HTTPException(400,'导入预览编号无效')
+    con=get_db()
+    try:return metrics_import.confirm_preview(con,preview_id)
+    except metrics_import.DuplicateImportError as e:
+        raise HTTPException(409,detail={'message':str(e),'batch_id':e.batch_id})
+    except metrics_import.ImportErrorDetail as e:
+        raise HTTPException(400,str(e))
+    finally:con.close()
+
+@app.delete('/api/metrics/import/preview/{preview_id}')
+def api_metrics_import_cancel(preview_id: str):
+    con=get_db()
+    try:return {'ok':metrics_import.cancel_preview(con,preview_id)}
+    finally:con.close()
+
+@app.get('/api/metrics/imports/{batch_id}/accounts')
+def api_metrics_import_accounts(batch_id: int):
+    con=get_db()
+    try:return metrics_import.list_accounts(con,batch_id)
+    except metrics_import.ImportErrorDetail as e:raise HTTPException(404,str(e))
+    finally:con.close()
+
+@app.delete('/api/metrics/imports/{batch_id}')
+def api_metrics_import_delete(batch_id: int):
+    con=get_db()
+    try:
+        if not con.execute('SELECT 1 FROM metric_import_batches WHERE id=?',(batch_id,)).fetchone():
+            raise HTTPException(404,'导入批次不存在')
+        backup_database(DB_PATH,'before-metric-import-delete')
+        metrics_import.delete_batch(con,batch_id)
+        return {'ok':True}
+    except metrics_import.ImportErrorDetail as e:raise HTTPException(404,str(e))
+    finally:con.close()
+
+@app.get('/api/metrics')
+def api_metrics(q: str='',blogger_ids: str='',video_ids: str='',date_from: str='',date_to: str='',
+                min_duration: int=None,max_duration: int=None,min_likes: int=None,min_comments: int=None,
+                min_shares: int=None,min_saves: int=None,kind: str='',sort: str='date_desc',
+                limit: int=100,offset: int=0,batch_id: int=0,creator_keys: str=''):
+    """Query local records, or one explicitly selected external CSV import batch."""
+    filters={'q':q,'blogger_ids':blogger_ids,'video_ids':video_ids,'date_from':date_from,'date_to':date_to,
+             'min_duration':min_duration,'max_duration':max_duration,'min_likes':min_likes,
+             'min_comments':min_comments,'min_shares':min_shares,'min_saves':min_saves,'kind':kind,
+             'creator_keys':creator_keys}
+    con=get_db()
+    try:
+        return query_metrics(con,{**filters,'sort':sort,'limit':limit,'offset':offset},batch_id=batch_id)
+    except ValueError as e:
+        raise HTTPException(400,str(e))
+    finally:
+        con.close()
+
+@app.get('/api/metrics/export.csv')
+def api_metrics_export(q: str='',blogger_ids: str='',video_ids: str='',date_from: str='',date_to: str='',
+                       min_duration: int=None,max_duration: int=None,min_likes: int=None,min_comments: int=None,
+                       min_shares: int=None,min_saves: int=None,kind: str='',batch_id: int=0,creator_keys: str=''):
+    """Download a bounded CSV of the same filtered records shown in the comparison page."""
+    filters={'q':q,'blogger_ids':blogger_ids,'video_ids':video_ids,'date_from':date_from,'date_to':date_to,
+             'min_duration':min_duration,'max_duration':max_duration,'min_likes':min_likes,
+             'min_comments':min_comments,'min_shares':min_shares,'min_saves':min_saves,'kind':kind,
+             'creator_keys':creator_keys}
+    con=get_db()
+    try:
+        body,count=export_metrics_csv(con,filters,batch_id=batch_id)
+        return Response(content=body.encode('utf-8-sig'),media_type='text/csv; charset=utf-8',
+                        headers={'Content-Disposition':'attachment; filename="douyin_metrics.csv"',
+                                 'X-Export-Count':str(count)})
+    except ValueError as e:
+        raise HTTPException(400,str(e))
+    finally:
+        con.close()
+
 app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
     print("抖音博主数据库已启动: http://127.0.0.1:8321")
     uvicorn.run(app, host="127.0.0.1", port=8321)
-
-
-

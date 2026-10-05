@@ -13,7 +13,7 @@ def client(tmp_path, monkeypatch):
     db = tmp_path / "test.db"
     monkeypatch.setattr(app, "DB_PATH", db)
     app.init_db()
-    with TestClient(app.app) as c:
+    with TestClient(app.app, base_url="http://127.0.0.1") as c:
         # 1 博主 + 2 视频（一条带字幕+分析）
         bid = c.post("/api/bloggers", json={"name": "测试博主", "slug": "testb", "platform": "抖音",
                                             "douyin_id": "123", "homepage_url": "https://www.douyin.com/user/123",
