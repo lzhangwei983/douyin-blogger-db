@@ -46,8 +46,8 @@ New-Item -ItemType Directory -Path $smokeRoot -Force | Out-Null
 try {
     $env:DYDB_HOME = $smokeRoot
     $env:DYDB_SMOKE_REPORT = $smokeReport
-    & $exe --smoke-test
-    if (-not (Test-Path $smokeReport)) { throw '发行版 EXE 冒烟启动失败。' }
+    $smokeProcess = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -Wait -WindowStyle Hidden -PassThru
+    if ($smokeProcess.ExitCode -ne 0 -or -not (Test-Path $smokeReport)) { throw '发行版 EXE 冒烟启动失败。' }
     $smoke = Get-Content -Raw -Path $smokeReport | ConvertFrom-Json
     if (-not $smoke.ready) { throw '发行版 EXE 未能启动本地服务。' }
     foreach ($path in @('/', '/api/bloggers', '/api/search?q=AI', '/api/settings', '/api/cookies/status')) {

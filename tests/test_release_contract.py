@@ -46,13 +46,15 @@ def test_release_script_builds_a_clean_source_archive_and_licensed_windows_bundl
     assert "third_party_notices.md" in script
     assert "--no-license-path" in script
     assert "发行版 exe 冒烟启动失败" in script
-    assert "-or -not (test-path $smokereport)" not in script
     assert "license" in script
     assert "agent_guide.md" in script
     assert "douyinblogdb-windows-v$version.zip" in script
     assert "douyinblogdb-source-v$version.zip" in script
     assert "dydb_build_python" in script
     assert ".release-package-venv" in script
+    assert "start-process -filepath $exe" in script
+    assert "-wait -windowstyle hidden" in script
+    assert "$smokeprocess.exitcode" in script
     assert "d:/" not in script
 
 
