@@ -5,7 +5,8 @@ $version = '1.1.0'
 $buildEnv = Join-Path $root '.release-package-venv'
 $buildPython = Join-Path $buildEnv 'Scripts\python.exe'
 $releaseDir = Join-Path $root 'release'
-$stage = Join-Path $releaseDir "windows-v$version"
+$stageSuffix = [guid]::NewGuid().ToString('N')
+$stage = Join-Path $releaseDir "windows-v$version-$stageSuffix"
 $exe = Join-Path $root 'dist\DouyinBlogDB.exe'
 $bundleZip = Join-Path $releaseDir "DouyinBlogDB-Windows-v$version.zip"
 $sourceZip = Join-Path $releaseDir "DouyinBlogDB-source-v$version.zip"
@@ -84,6 +85,17 @@ $noticeHeader = "# Windows 发行包第三方依赖许可`r`n`r`n以下清单由
 [System.IO.File]::WriteAllText($notices, $noticeHeader + $noticeText, [System.Text.UTF8Encoding]::new($false))
 
 Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $bundleZip -Force
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$expectedMembers = @('AGENT_GUIDE.md','DISCLAIMER.md','DouyinBlogDB.exe','LICENSE','README.md','THIRD_PARTY_NOTICES.md') | Sort-Object
+$archive = [System.IO.Compression.ZipFile]::OpenRead($bundleZip)
+try {
+    $actualMembers = @($archive.Entries | ForEach-Object { $_.FullName } | Sort-Object)
+    if ($actualMembers.Count -ne $expectedMembers.Count -or
+        (($actualMembers -join "`n") -cne ($expectedMembers -join "`n"))) {
+        throw 'Windows ZIP 文件清单与允许的发行内容不一致。'
+    }
+}
+finally { $archive.Dispose() }
 & git archive --format=zip --output=$sourceZip HEAD
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path $sourceZip)) { throw '无法生成基于当前提交的干净源码包。' }
 

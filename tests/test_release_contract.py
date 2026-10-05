@@ -55,6 +55,10 @@ def test_release_script_builds_a_clean_source_archive_and_licensed_windows_bundl
     assert "start-process -filepath $exe" in script
     assert "-wait -windowstyle hidden" in script
     assert "$smokeprocess.exitcode" in script
+    assert "windows-v$version-" in script
+    assert "[guid]::newguid()" in script
+    assert "$expectedmembers" in script
+    assert "system.io.compression.zipfile" in script
     assert "d:/" not in script
 
 

@@ -37,6 +37,7 @@ from metrics_service import query_metrics, export_csv as export_metrics_csv, saf
 import metrics_import_service as metrics_import
 
 DB_PATH = DATA_DIR / "douyin_blog.db"
+SCHEMA_VERSION = 1
 
 app = FastAPI(title="抖音博主数据库")
 
@@ -78,7 +79,33 @@ def get_db():
     con.execute("PRAGMA busy_timeout = 2000")
     return con
 
+
+def _database_needs_migration_backup(path):
+    if not Path(path).is_file() or Path(path).stat().st_size == 0:
+        return False
+    with sqlite3.connect(path, timeout=2) as probe:
+        version = probe.execute("PRAGMA user_version").fetchone()[0]
+        if version > SCHEMA_VERSION:
+            raise sqlite3.DatabaseError("数据库版本高于当前程序，请使用对应的新版应用")
+        if version < SCHEMA_VERSION:
+            return True
+        tables = {row[0] for row in probe.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if not {'bloggers', 'videos', 'analyses'} <= tables:
+            return True
+        expected = {'bloggers': {'manual_fields'}, 'videos': {'images', 'manual_fields'}}
+        for table, columns in expected.items():
+            actual = {row[1] for row in probe.execute('PRAGMA table_info(' + table + ')')}
+            if not columns <= actual:
+                return True
+    return False
+
+
 def init_db():
+    try:
+        if _database_needs_migration_backup(DB_PATH):
+            backup_database(DB_PATH, "before-schema-migration")
+    except sqlite3.Error as error:
+        raise sqlite3.DatabaseError("数据库结构无法安全升级；请检查文件是否被占用，原数据库未迁移") from error
     con = get_db()
     con.executescript("""
     CREATE TABLE IF NOT EXISTS bloggers (
@@ -137,6 +164,7 @@ def init_db():
     for table in ('bloggers','videos'):
         columns={r[1] for r in con.execute('PRAGMA table_info('+table+')')}
         if 'manual_fields' not in columns:con.execute("ALTER TABLE "+table+" ADD COLUMN manual_fields TEXT DEFAULT '[]'")
+    con.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
     con.commit()
     con.close()
 
@@ -183,6 +211,16 @@ class BloggerPatch(BaseModel):
     bio: str = None
     notes: str = None
     tags: str = None
+
+
+def normalize_public_video_url(value):
+    from fetch_user_videos import CollectionError
+    from video_collection_service import normalize_video_url
+    try:
+        return normalize_video_url(value)
+    except CollectionError as error:
+        raise HTTPException(400, str(error)) from None
+
 
 # ---------- helpers ----------
 def row_blogger(r):
@@ -328,11 +366,12 @@ def list_videos(bid: int, q: str = "", kind: str = "", analyzed: str = "",
 
 @app.post("/api/bloggers/{bid}/videos")
 def create_video(bid: int, v: VideoIn):
+    safe_url=normalize_public_video_url(v.url)
     con = get_db()
     if not con.execute("SELECT 1 FROM bloggers WHERE id=?", (bid,)).fetchone():
         con.close()
         raise HTTPException(404, "博主不存在")
-    m = re.search(r"(?:/video/|/note/)(\d+)", v.url)
+    m = re.search(r"(?:/video/|/note/)(\d+)", safe_url)
     video_id = m.group(1) if m else None
     max_seq = con.execute("SELECT COALESCE(MAX(seq),0) FROM videos WHERE blogger_id=?", (bid,)).fetchone()[0]
     try:
@@ -340,7 +379,7 @@ def create_video(bid: int, v: VideoIn):
             """INSERT INTO videos(blogger_id,seq,video_id,url,kind,title,upload_date,duration,
                like_count,comment_count,repost_count,save_count,status,subtitle,subtitle_chars,has_analysis,images,notes,tags,created_at,updated_at)
                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?,?,?)""",
-            (bid, max_seq + 1, video_id, v.url, v.kind, v.title, v.upload_date or None, v.duration,
+            (bid, max_seq + 1, video_id, safe_url, v.kind, v.title, v.upload_date or None, v.duration,
              v.like_count, v.comment_count, v.repost_count, v.save_count, v.status,
              v.subtitle, len(v.subtitle or ""), v.images, v.notes, v.tags, now(), now()))
         con.commit()
@@ -574,6 +613,11 @@ def api_cookies_status():
     return {"douyin":_cookie_status("douyin")}
 
 
+def is_douyin_cookie_domain(domain):
+    value=str(domain or "").strip().lower().lstrip(".")
+    return value == "douyin.com" or value.endswith(".douyin.com")
+
+
 
 @app.post("/api/cookies/upload")
 async def api_cookies_upload(platform: str=Query("douyin"),file: UploadFile=File(...)):
@@ -595,6 +639,10 @@ async def api_cookies_upload(platform: str=Query("douyin"),file: UploadFile=File
         except ValueError:
             payload=None
         if isinstance(payload,list):
+            payload=[cookie for cookie in payload
+                     if isinstance(cookie,dict) and is_douyin_cookie_domain(cookie.get("domain"))]
+            if not payload:
+                raise ValueError("文件中没有抖音域名的Cookie；原登录状态未改变")
             write_json(temp.with_suffix(".json"),payload)
         elif "Netscape HTTP Cookie File" in raw:
             atomic_text(temp.with_suffix(".txt"),raw)
@@ -602,8 +650,10 @@ async def api_cookies_upload(platform: str=Query("douyin"),file: UploadFile=File
         else:
             raise ValueError("请上传Netscape TXT或Cookie JSON数组")
         cookies=load_playwright_cookies(temp.with_suffix(".json"))
+        cookies=[cookie for cookie in cookies if is_douyin_cookie_domain(cookie.get("domain"))]
         if not cookies:
             raise ValueError("文件中没有可用的抖音Cookie；原登录状态未改变")
+        write_json(temp.with_suffix(".json"),cookies)
         with resource_lock("cookie-douyin"):
             write_json(base/"douyin_cookies.json",cookies)
             playwright_to_netscape(cookies,base/"douyin_cookies.txt")
@@ -729,7 +779,23 @@ _tid = 0
 
 def find_cookie():
     for p in (DATA_DIR/'work/douyin_cookies.txt',DATA_DIR/'douyin_cookies.txt',BASE/'douyin_cookies.txt',BASE/'work/douyin_cookies.txt'):
-        if p.exists() and p.stat().st_size>0:return str(p)
+        if not p.exists() or p.stat().st_size==0:continue
+        try:
+            from cookie_scope import load_cookie_jar
+            from _cookie_utils import playwright_to_netscape
+            jar=load_cookie_jar(p)
+            cookies=[{'name':cookie.name,'value':cookie.value,'domain':cookie.domain,'path':cookie.path,
+                      'secure':cookie.secure,'httpOnly':cookie.has_nonstandard_attr('HttpOnly'),
+                      'expires':cookie.expires if cookie.expires is not None else -1}
+                     for cookie in jar if not cookie.is_expired() and is_douyin_cookie_domain(cookie.domain)]
+            if not cookies:continue
+            scoped_dir=DATA_DIR/'work'/'.download-cookie-tmp'
+            scoped_dir.mkdir(parents=True,exist_ok=True)
+            scoped_path=scoped_dir/(__import__('uuid').uuid4().hex+'.txt')
+            playwright_to_netscape(cookies,scoped_path)
+            return str(scoped_path)
+        except (OSError,ValueError):
+            continue
     return None
 
 
@@ -743,6 +809,7 @@ def download_video(vid: int):
         raise HTTPException(404, "视频不存在")
     if not r["url"]:
         raise HTTPException(400, "该视频没有链接")
+    safe_url=normalize_public_video_url(r["url"])
     _tid += 1
     tid = _tid
     _tasks[tid] = {"status": "running", "log": [], "path": None}
@@ -789,13 +856,18 @@ def download_video(vid: int):
         try:
             import yt_dlp
             with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(r["url"], download=True)
+                info = ydl.extract_info(safe_url, download=True)
             f = ydl.prepare_filename(info)
             _tasks[tid]["path"] = f
             _tasks[tid]["status"] = "done"
         except Exception as e:
             _tasks[tid]["status"] = "failed"
             _tasks[tid]["log"].append(str(e)[:300])
+        finally:
+            try:
+                Path(ck).unlink(missing_ok=True)
+            except OSError:
+                pass
 
     fn = run_images if r["kind"] == "图文" else run_video
     threading.Thread(target=fn, daemon=True).start()
